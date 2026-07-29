@@ -149,36 +149,6 @@
 </section>
 
 <section>
-  <p class="lbl">周波数応答の測定</p>
-  <div class="row">
-    <button id="btnSweep">10 → 23 kHz スイープ</button>
-    <button id="btnTone">単一トーンを鳴らす</button>
-  </div>
-  <div class="field" style="margin-top:11px">
-    <p class="lbl" style="margin-bottom:4px">トーン周波数 <span class="val" id="toneVal">18000</span> Hz</p>
-    <input type="range" id="tone" min="8000" max="23000" step="250" value="18000">
-  </div>
-  <p class="note">
-    スイープは全体像の把握用。単一トーンは「自分に聞こえるか」「相手に届くか」を 1 点ずつ詰めるのに使います。
-    鳴らしながらスライダーを動かすと、可聴限界がその場で分かります。
-  </p>
-</section>
-
-<section>
-  <p class="lbl">帯域スキャン — どこから通らなくなるか</p>
-  <div class="row">
-    <button id="btnScan" class="primary">6 帯域を順に送信</button>
-    <button id="btnScanReset">結果をリセット</button>
-  </div>
-  <table id="scanTbl" style="margin-top:11px"></table>
-  <div class="warnbox">
-    送信側でこのボタンを押すと、6 つの異なる周波数帯で同じ内容を順に送ります。
-    受信側は 6 帯域すべてを同時に待ち受けているので、<strong>どこまで届いてどこから落ちるかが 1 回で分かります。</strong>
-    受信側は何も操作せず、マイクを開始したまま待つだけです。所要 20 秒ほど。
-  </div>
-</section>
-
-<section>
   <p class="lbl">送信 — 手動</p>
   <div class="field"><input type="text" id="txText" value="hello" maxlength="140"></div>
   <div class="field">
@@ -223,10 +193,45 @@
   </div>
 </section>
 
+<section>
+  <p class="lbl">受信データ <span id="rxCount" style="color:var(--sig)"></span></p>
+  <div id="rx"><span class="t">マイク未開始</span></div>
+</section>
+
+<section>
+  <p class="lbl">周波数応答の測定</p>
+  <div class="row">
+    <button id="btnSweep">10 → 23 kHz スイープ</button>
+    <button id="btnTone">単一トーンを鳴らす</button>
+  </div>
+  <div class="field" style="margin-top:11px">
+    <p class="lbl" style="margin-bottom:4px">トーン周波数 <span class="val" id="toneVal">18000</span> Hz</p>
+    <input type="range" id="tone" min="8000" max="23000" step="250" value="18000">
+  </div>
+  <p class="note">
+    スイープは全体像の把握用。単一トーンは「自分に聞こえるか」「相手に届くか」を 1 点ずつ詰めるのに使います。
+    鳴らしながらスライダーを動かすと、可聴限界がその場で分かります。
+  </p>
+</section>
+
+<section>
+  <p class="lbl">帯域スキャン — どこから通らなくなるか</p>
+  <div class="row">
+    <button id="btnScan" class="primary">6 帯域を順に送信</button>
+    <button id="btnScanReset">結果をリセット</button>
+  </div>
+  <table id="scanTbl" style="margin-top:11px"></table>
+  <div class="warnbox">
+    送信側でこのボタンを押すと、6 つの異なる周波数帯で同じ内容を順に送ります。
+    受信側は 6 帯域すべてを同時に待ち受けているので、<strong>どこまで届いてどこから落ちるかが 1 回で分かります。</strong>
+    受信側は何も操作せず、マイクを開始したまま待つだけです。所要 20 秒ほど。
+  </div>
+</section>
+
 <section id="morse">
   <p class="lbl">モールス入力 — 叩いて超音波で送る</p>
   <div class="row">
-    <button id="mrListen" class="primary">タップ入力を開始</button>
+    <button id="mrListen" class="primary" data-hold="1000">タップ入力を開始</button>
     <button id="mrNow">今すぐ送信</button>
   </div>
 
@@ -256,7 +261,7 @@
     <button id="mrClear" class="sm">消去</button>
   </div>
 
-  <label class="chk"><input type="checkbox" id="mrArm" checked>最初の1打を検出したら自動で入力を開始</label>
+  <label class="chk"><input type="checkbox" id="mrArm" checked>送信のあと、次の1打で自動的に入力を再開する</label>
   <label class="chk"><input type="checkbox" id="mrAuto" checked><span id="mrEndLbl">3.5</span> 秒の無音を検出したら自動送信</label>
 
   <div class="field" style="margin-top:9px">
@@ -299,7 +304,7 @@
     <div class="fsrow">
       <input type="number" id="rgBeat" inputmode="decimal" step="0.05" value="0.70">
       <span class="unit">s</span>
-      <button class="mini" data-cal="beat">実測</button>
+      <button class="mini" data-cal="beat" data-hold="1000">実測</button>
     </div>
   </div>
   <div class="field">
@@ -343,6 +348,7 @@
     <strong>実測</strong>を押して、要素を並べるつもりの間隔で 6 回以上叩くと、実際の 1 拍を測って入れます。
   </p>
 </section>
+<div id="mrFlash"></div>
 
 <section>
   <p class="lbl">受信 — 通知と振動で読む</p>
@@ -366,29 +372,22 @@
   <div class="field" style="margin-top:12px">
     <p class="lbl" style="margin-bottom:6px">出し方 — 短音は 1 回、長音は連続 2 回</p>
     <select id="rxOut">
-      <option value="both" selected>通知と振動の両方</option>
+      <option value="none" selected>出さない — 画面表示のみ</option>
       <option value="notif">通知だけ</option>
       <option value="vib">振動だけ</option>
-      <option value="none">出さない — 画面表示のみ</option>
+      <option value="both">通知と振動の両方</option>
     </select>
   </div>
 
   <div class="field">
-    <p class="lbl" style="margin-bottom:5px">1 拍 — 変えると下の 3 つも引き直します</p>
-    <div class="fsrow">
-      <input type="number" id="rxBeat" inputmode="decimal" step="0.5" value="3.0">
-      <span class="unit">s</span>
-    </div>
-  </div>
-  <div class="field">
-    <p class="lbl" style="margin-bottom:5px">長音の 2 発の間隔</p>
+    <p class="lbl" style="margin-bottom:5px">長音の 2 発の間隔 — 1 発目から 2 発目まで</p>
     <div class="fsrow">
       <input type="number" id="rxRep" inputmode="decimal" step="0.5" value="1.5">
       <span class="unit">s</span>
     </div>
   </div>
   <div class="field">
-    <p class="lbl" style="margin-bottom:5px">要素と要素の間隔 / 文字と文字の間隔</p>
+    <p class="lbl" style="margin-bottom:5px">要素と要素の間隔 / 文字と文字の間隔 — どちらも直前の 1 発から数えます</p>
     <div class="fsrow">
       <input type="number" id="rxGap" inputmode="decimal" step="0.5" value="3.0">
       <span class="dash">/</span>
@@ -403,18 +402,15 @@
   <label class="chk"><input type="checkbox" id="rxFlash" checked>画面も光らせる</label>
 
   <div class="warnbox">
-    iPhone どうしでは <code>navigator.vibrate</code> が動かないので、触覚は<strong>通知のハプティクス</strong>だけが頼りです。
-    連続した通知は OS 側で間引かれるため、<strong>間隔を十分に広げてください</strong>。既定は長音の 2 発を 1.5 秒あけています。
-    「2 連続を試す」で 2 回とも届くか確かめ、届かなければ間隔を伸ばしてください。
+    間隔は再生を始めた時刻からの<strong>絶対時刻</strong>で刻むので、通知を出すのにかかった時間はずれに乗りません。
+    ただし<strong>この画面を前面に出したままにしてください</strong>。iOS は別のアプリに移るか画面が消えるとタイマーを止めるため、
+    そこから先の通知は時刻どおりに出ません。
+    <br>iPhone どうしでは <code>navigator.vibrate</code> が動かないので、触覚は<strong>通知のハプティクス</strong>だけが頼りです。
+    連続した通知は OS 側で間引かれるため、<strong>長音の 2 発の間隔から先に決めてください</strong>。
+    「2 連続を試す」で 2 回とも届く最小の値を探し、要素と文字の間隔はそれより広く取ります。
     <br>2 件が 1 件にまとまって見えるときは、iPhone の 設定 → 通知 → このアプリ → <strong>通知のグループ化</strong> を「オフ」にすると個別に並びます。
     <br>通知そのものが出ないときは、Safari で開いたままにせず<strong>ホーム画面に追加</strong>してから許可してください。
   </div>
-</section>
-<div id="mrFlash"></div>
-
-<section>
-  <p class="lbl">受信データ <span id="rxCount" style="color:var(--sig)"></span></p>
-  <div id="rx"><span class="t">マイク未開始</span></div>
 </section>
 
 <section>
@@ -1108,9 +1104,9 @@ function tapAttach(){
     specBuf = new Float32Array(tapAnalyser.frequencyBinCount);
     micSource.connect(tapAnalyser);
     noiseDb = -90; warm = 0; prevDb = -120; holdUntil = 0;
-    if ($('mrArm').checked && mode === 'off') mode = 'arm';
+    // マイクを開始しただけでは入力を始めない。「タップ入力を開始」で始める
     if (!rafId) rafId = requestAnimationFrame(tick);
-    mrLog('マイクに接続しました', 'g');
+    mrLog('マイクに接続しました。入力は「タップ入力を開始」から', 'g');
     updState();
   }catch(e){ mrLog('接続に失敗: ' + e.message, 's'); }
 }
@@ -1287,6 +1283,18 @@ function applyCal(){
   mrLog('1 拍を ' + m.toFixed(2) + ' s に更新', 'g');
 }
 
+/* ---------- 画面のボタンを押した音を打鍵と取り違えない ---------- */
+function guard(ms){
+  holdUntil = Math.max(holdUntil, performance.now() + ms);
+  prevDb = -120;
+}
+// どのボタンでも押した直後は検出を止める。data-hold があればその長さで
+document.addEventListener('click', e => {
+  const t = e.target;
+  const b = (t && t.closest) ? t.closest('button') : null;
+  if (b) guard(b.dataset && b.dataset.hold ? +b.dataset.hold : 400);
+}, true);
+
 /* ---------- 画面を光らせる ---------- */
 let flashT = null;
 function flash(ms){
@@ -1373,6 +1381,36 @@ function buzz(){
   if ($('rxFlash').checked) flash(ms);
 }
 
+// 先に全部の発火時刻を決めてから、その時刻まで待って出す。
+// 通知を出すのにかかった時間が次の間隔に足し込まれないようにするため
+function buildPlan(list){
+  const rep = clamp(parseFloat($('rxRep').value)||1.5, 0.2, 30) * 1000;
+  const gap = clamp(parseFloat($('rxGap').value)||3.0, 0.3, 60) * 1000;
+  const chg = clamp(parseFloat($('rxChrGap').value)||6.0, 0.5, 120) * 1000;
+  const { dec } = tables();
+  const plan = [];
+  let at = 0;
+  for (let c=0; c<list.length; c++){
+    const code = list[c];
+    for (let e=0; e<code.length; e++){
+      const n = code[e] === '.' ? 1 : 2;
+      for (let i=0;i<n;i++){
+        plan.push({
+          at: at + i*rep,
+          title: n === 1 ? '短音 ・' : '長音 －  ' + (i+1) + '/2',
+          body: (c+1) + '文字目「' + (dec[code] || '?') + '」 ' + (e+1) + '要素目',
+          note: (c+1) + '/' + list.length + ' 文字目「' + (dec[code] || '?') + '」 ' +
+                (e+1) + '/' + code.length + ' — ' + (n === 1 ? '短音' : '長音 ' + (i+1) + '/2')
+        });
+      }
+      at += (n-1)*rep;
+      if (e < code.length-1) at += gap;
+    }
+    if (c < list.length-1) at += chg;
+  }
+  return plan;
+}
+
 async function rxPlay(list){
   if (typeof list === 'string') list = [list];
   list = (list || []).filter(Boolean);
@@ -1381,31 +1419,30 @@ async function rxPlay(list){
   if (rxBusy){ rxAbort = true; await sleep(80); rxAbort = false; }
   rxBusy = true;
   const out = $('rxOut').value;
-  const rep = clamp(parseFloat($('rxRep').value)||1.5, 0.2, 30) * 1000;
-  const gap = clamp(parseFloat($('rxGap').value)||3.0, 0.3, 60) * 1000;
-  const chg = clamp(parseFloat($('rxChrGap').value)||6.0, 0.5, 120) * 1000;
-  const { dec } = tables();
-  outer:
-  for (let c=0; c<list.length; c++){
-    const code = list[c];
-    for (let e=0; e<code.length; e++){
-      if (rxAbort) break outer;
-      const n = code[e] === '.' ? 1 : 2;
-      for (let i=0;i<n;i++){
-        if (rxAbort) break outer;
-        $('rxProg').textContent = (c+1) + '/' + list.length + ' 文字目「' + (dec[code] || '?') + '」 ' +
-                                  (e+1) + '/' + code.length + ' — ' + (n === 1 ? '短音' : '長音 ' + (i+1) + '/2');
-        buzz();
-        if (out === 'notif' || out === 'both'){
-          await notify(n === 1 ? '短音 ・' : '長音 －  ' + (i+1) + '/2', (c+1) + '文字目 ' + (e+1) + '要素目');
-        }
-        if (i < n-1) await sleep(rep);
-      }
-      if (e < code.length-1) await sleep(gap);
+  const plan = buildPlan(list);
+  const t0 = performance.now();
+  for (let i=0;i<plan.length;i++){
+    const p = plan[i];
+    // 予定時刻まで待つ。細かく起きて実時計と突き合わせるのでずれが溜まらない
+    for (;;){
+      if (rxAbort) break;
+      const d = t0 + p.at - performance.now();
+      if (d <= 1) break;
+      await sleep(d > 250 ? 200 : d);
     }
-    if (c < list.length-1) await sleep(chg);
+    if (rxAbort) break;
+    const late = performance.now() - (t0 + p.at);
+    $('rxProg').textContent = p.note + (late > 150 ? '（' + (late/1000).toFixed(1) + ' 秒遅れ）' : '');
+    buzz();
+    if (out === 'notif' || out === 'both') await notify(p.title, p.body);
   }
-  $('rxProg').textContent = rxAbort ? '停止しました' : '再生しました';
+  if (!rxAbort){
+    const total = ((performance.now() - t0)/1000).toFixed(1);
+    const want  = (plan[plan.length-1].at/1000).toFixed(1);
+    $('rxProg').textContent = '再生しました — ' + plan.length + ' 発 / 所要 ' + total + ' 秒（予定 ' + want + ' 秒）';
+  } else {
+    $('rxProg').textContent = '停止しました';
+  }
   rxBusy = false;
   holdUntil = performance.now() + TX_HOLD;
 }
@@ -1504,17 +1541,9 @@ $('rxTry').onclick = async () => {
   updDiag();
 };
 $('rxOut').onchange   = () => store.set('mr3.rxOut', $('rxOut').value);
-$('rxBeat').onchange  = () => {
-  const b = clamp(parseFloat($('rxBeat').value)||3.0, 0.3, 60);
-  $('rxBeat').value = b.toFixed(1);
-  $('rxRep').value  = (b*0.5).toFixed(1);
-  $('rxGap').value  = b.toFixed(1);
-  $('rxChrGap').value = (b*2).toFixed(1);
-  saveRx();
-};
 ['rxRep','rxGap','rxChrGap'].forEach(id => { $(id).onchange = saveRx; });
 function saveRx(){
-  store.set('mr3.rx', { beat:$('rxBeat').value, rep:$('rxRep').value, gap:$('rxGap').value, chr:$('rxChrGap').value });
+  store.set('mr3.rx', { rep:$('rxRep').value, gap:$('rxGap').value, chr:$('rxChrGap').value });
 }
 $('rxVib').oninput    = e => { $('rxVibVal').textContent = e.target.value; store.set('mr3.rxVib', +e.target.value); };
 $('rxFlash').onchange = e => store.set('mr3.rxFlash', e.target.checked);
@@ -1545,7 +1574,7 @@ function renderCodeTbl(){
   const rv = store.get('mr3.rxVib', null); if (rv !== null){ $('rxVib').value = rv; $('rxVibVal').textContent = rv; }
   const rf = store.get('mr3.rxFlash', null); if (rf !== null) $('rxFlash').checked = rf;
   const rx = store.get('mr3.rx', null);
-  if (rx){ $('rxBeat').value = rx.beat; $('rxRep').value = rx.rep; $('rxGap').value = rx.gap; $('rxChrGap').value = rx.chr; }
+  if (rx && rx.rep){ $('rxRep').value = rx.rep; $('rxGap').value = rx.gap; $('rxChrGap').value = rx.chr; }
   const r = store.get('mr3.ranges', null);
   if (r && r.beat) { try{ writeRanges(r); }catch(e){} }
 })();
