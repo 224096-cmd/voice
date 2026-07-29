@@ -44,6 +44,19 @@
   label.chk input{accent-color:var(--sig);width:17px;height:17px}
   .field{margin-bottom:11px} .field:last-child{margin-bottom:0}
   .val{font-family:var(--mono);color:var(--sig);font-variant-numeric:tabular-nums}
+  .fsrow{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+  .fsrow input[type=number]{flex:1 1 0;min-width:0;width:100%;font-family:var(--mono);
+    font-size:15px;color:var(--ink);background:var(--panel2);border:1px solid var(--line);
+    border-radius:7px;padding:10px 8px;text-align:center;font-variant-numeric:tabular-nums;
+    -moz-appearance:textfield}
+  .fsrow input[type=number]:focus{outline:none;border-color:var(--sig)}
+  .fsrow input::-webkit-outer-spin-button,.fsrow input::-webkit-inner-spin-button{
+    -webkit-appearance:none;margin:0}
+  .fsrow .dash{color:var(--dim);font-family:var(--mono)}
+  .fsrow .unit{color:var(--dim);font-family:var(--mono);font-size:12px}
+  .presets{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .presets button{flex:1 1 auto;min-width:0;padding:8px 6px;font-size:11.5px;
+    font-family:var(--mono)}
   table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11.5px}
   td{padding:5px 0;border-bottom:1px solid var(--line);vertical-align:top}
   td:first-child{color:var(--dim);width:44%}
@@ -127,11 +140,25 @@
     </select>
   </div>
   <div class="field">
-    <p class="lbl" style="margin-bottom:4px">
-      使用帯 <span class="val" id="fsVal">15000 – 19500</span> Hz
-      <span style="color:var(--dim)">(freqStart <span id="fsRaw">320</span>)</span>
-    </p>
+    <p class="lbl" style="margin-bottom:6px">使用帯 — 数字を直接入力できます(下限・上限どちらからでも)</p>
+    <div class="fsrow">
+      <input type="number" id="fsLo" inputmode="numeric" value="15000">
+      <span class="dash">–</span>
+      <input type="number" id="fsHi" inputmode="numeric" value="19500">
+      <span class="unit">Hz</span>
+    </div>
     <input type="range" id="fs" min="160" max="416" step="1" value="320">
+    <div class="presets">
+      <button data-hi="17500">上限 17.5k</button>
+      <button data-hi="19000">19k</button>
+      <button data-hi="19500">19.5k 既定</button>
+      <button data-hi="21000">21k</button>
+      <button data-hi="22500">22.5k</button>
+    </div>
+    <p class="lbl" style="margin:9px 0 0">
+      実際の割り当て <span class="val" id="fsVal">15000 – 19500</span> Hz
+      <span style="color:var(--dim)">/ 幅 4500 Hz / freqStart <span id="fsRaw">320</span></span>
+    </p>
   </div>
   <div class="field">
     <p class="lbl" style="margin-bottom:4px">送信音量 <span class="val" id="volVal">60</span> / 100</p>
@@ -583,13 +610,39 @@ function updateFsLabel(){
   $('fsVal').textContent = hz(fs) + ' – ' + (hz(fs)+BANDW);
   $('fsRaw').textContent = fs;
 }
+
+// 入力は Hz、内部は FFT ビン番号。1 ビン = 46.875 Hz なので必ず丸めが入る
 let fsTimer = null;
-$('fs').oninput = () => {
-  updateFsLabel();
+function scheduleRebuild(){
   clearTimeout(fsTimer);
-  // freqStart は init 時に複写されるので、変更後は必ず作り直す
-  fsTimer = setTimeout(() => { if (ggwave) rebuild('manual').then(showDiag).catch(()=>{}); }, 250);
+  fsTimer = setTimeout(() => {
+    if (ggwave) rebuild('manual').then(showDiag).catch(e => log('再初期化に失敗: '+e.message,'bad'));
+  }, 250);
+}
+function applyFs(fs, keep){
+  fs = Math.max(160, Math.min(416, Math.round(fs)));
+  $('fs').value = fs;
+  if (keep !== 'lo') $('fsLo').value = hz(fs);
+  if (keep !== 'hi') $('fsHi').value = hz(fs) + BANDW;
+  updateFsLabel();
+  scheduleRebuild();
+}
+
+$('fs').oninput   = () => applyFs(parseInt($('fs').value,10));
+// change で処理する。input だと入力途中の数字で毎回作り直してしまう
+$('fsLo').onchange = e => {
+  const v = parseFloat(e.target.value);
+  if (isNaN(v)) { applyFs(parseInt($('fs').value,10)); return; }
+  applyFs(v / BINHZ);
 };
+$('fsHi').onchange = e => {
+  const v = parseFloat(e.target.value);
+  if (isNaN(v)) { applyFs(parseInt($('fs').value,10)); return; }
+  applyFs((v - BANDW) / BINHZ);
+};
+document.querySelectorAll('.presets button').forEach(b => {
+  b.onclick = () => applyFs((parseInt(b.dataset.hi,10) - BANDW) / BINHZ);
+});
 $('proto').onchange = () => { if (ggwave) rebuild('manual').then(showDiag).catch(()=>{}); };
 $('vol').oninput  = e => $('volVal').textContent = e.target.value;
 $('tone').oninput = e => {
@@ -615,7 +668,7 @@ $('btnPeak').onclick = () => {
   $('btnPeak').textContent = peakOn ? 'ピーク保持を消す' : 'ピーク保持を再開';
 };
 
-updateFsLabel(); renderScan(); sizeCanvas(); showDiag();
+applyFs(320); renderScan(); sizeCanvas(); showDiag();
 </script>
 </body>
 </html>
