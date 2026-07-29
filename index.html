@@ -221,7 +221,7 @@
 </section>
 
 <section id="morse">
-  <p class="lbl">モールス入力 — 端末を爪で叩く</p>
+  <p class="lbl">モールス入力 — 叩いて超音波で送る</p>
   <div class="row">
     <button id="mrListen" class="primary">タップ入力を開始</button>
     <button id="mrNow">今すぐ送信</button>
@@ -233,10 +233,12 @@
   </div>
   <div class="track" id="mrTrack"><i id="mrCursor"></i></div>
   <div class="scale" id="mrScale"></div>
-  <div class="meter" style="margin-top:8px"><i id="mrLevel"></i></div>
+  <p class="lbl" id="mrCount" style="margin:7px 0 0">送信まで —</p>
+  <div class="meter" style="margin-top:7px"><i id="mrLevel"></i></div>
 
   <div class="mrout">
     <div><span class="k">符号</span><b id="mrSym" class="code">—</b></div>
+    <div><span class="k">文字</span><b id="mrChar">—</b></div>
     <div><span class="k">本文</span><b id="mrText">—</b></div>
   </div>
 
@@ -244,7 +246,6 @@
     <button data-mr="dot">・</button>
     <button data-mr="dash">－</button>
     <button data-mr="chr" class="sm">文字区切り</button>
-    <button data-mr="wrd" class="sm">単語区切り</button>
   </div>
   <div class="kbd">
     <button id="mrUndo" class="sm">1つ戻す</button>
@@ -252,8 +253,8 @@
   </div>
 
   <label class="chk"><input type="checkbox" id="mrArm" checked>ダミー音(最初の1打)を検出したら自動で入力を開始</label>
-  <label class="chk"><input type="checkbox" id="mrAuto" checked>通信終了(<span id="mrEndLbl">6.0</span>秒の無音)を検出したら自動送信</label>
-  <label class="chk"><input type="checkbox" id="mrSnap" checked>どの範囲にも入らない間隔は最も近い区分に丸める</label>
+  <label class="chk"><input type="checkbox" id="mrAuto" checked>終了ダミーから <span id="mrEndLbl">6.0</span> 秒あいたら自動送信</label>
+  <label class="chk"><input type="checkbox" id="mrSnap" checked>範囲を少し外れた間隔は近いほうへ丸める</label>
 
   <div class="field" style="margin-top:9px">
     <p class="lbl" style="margin-bottom:6px">符号系</p>
@@ -263,26 +264,28 @@
     </select>
   </div>
   <div class="field">
-    <p class="lbl" style="margin-bottom:6px">送信方法</p>
-    <select id="mrTarget">
-      <option value="morse" selected>モールス音で鳴らす</option>
-      <option value="gg">ggwave 超音波で送る</option>
-      <option value="both">両方</option>
-      <option value="none">送らない — 画面に出すだけ</option>
-    </select>
+    <p class="lbl" style="margin-bottom:4px">検出しきい値 <span class="val" id="mrThVal">14</span> dB — 暗騒音からの差</p>
+    <input type="range" id="mrTh" min="4" max="36" value="14">
   </div>
 
   <div id="mrLog" class="mrlog"></div>
 
   <p class="note">
-    <strong>叩き方。</strong>まず 1 回叩きます(<strong>ダミー音</strong>)。これは符号にならず、計時を開始するだけです。
-    以降は<strong>「次の音までの時間」</strong>が符号になります。爪の先で角を叩くと立ち上がりが鋭く、検出が安定します。
-    最後は 6 秒以上あけると通信終了と判定し、そのまま送信します。
+    <strong>叩き方。</strong>符号は<strong>「次の音までの時間」</strong>で決まります。だから符号を N 個送るには N+1 打が必要です。
+    <br><strong>開始ダミー</strong>：最初の 1 打。符号にならず、計時を始めるだけ。
+    <br><strong>終了ダミー</strong>：最後の 1 打。これも符号にならず、直前の間隔が・だったか－だったかを確定させるためのものです。
+    短点で終わるなら 0.3 秒後、長点で終わるなら 1.0 秒後に叩きます。
+    <br>終了ダミーから指定秒数あくと「これが終了ダミーだった」と確定し、本文を超音波で送ります。
   </p>
   <div class="warnbox">
-    このセクションはマイクの音を使います。上の<strong>「マイクを開始」</strong>を先に押してください。
-    バーの現在位置(白い縦線)が今どの区分にいるかを示します。色の境目で叩けば狙った符号になります。
+    マイクを使うので、上の<strong>「マイクを開始」</strong>を先に押してください。
+    送信は下の「送信 — 手動」のプロトコルと使用帯をそのまま使います。<strong>2 台で同じ設定</strong>にしてください。
   </div>
+
+  <details>
+    <summary>符号表</summary>
+    <table class="codetbl" id="mrCodeTbl"></table>
+  </details>
 </section>
 
 <section>
@@ -319,17 +322,7 @@
     </div>
   </div>
   <div class="field">
-    <p class="lbl" style="margin-bottom:5px">単語区切り &nbsp;<span class="val" id="calWrdN"></span></p>
-    <div class="fsrow">
-      <input type="number" id="rgWrdMin" inputmode="decimal" step="0.1" value="3.00">
-      <span class="dash">–</span>
-      <input type="number" id="rgWrdMax" inputmode="decimal" step="0.1" value="5.00">
-      <span class="unit">s</span>
-      <button class="mini" data-cal="wrd">実測</button>
-    </div>
-  </div>
-  <div class="field">
-    <p class="lbl" style="margin-bottom:5px">通信終了 — この秒数以上あいたら確定</p>
+    <p class="lbl" style="margin-bottom:5px">通信終了 — 終了ダミーからこの秒数で送る</p>
     <div class="fsrow">
       <input type="number" id="rgEnd" inputmode="decimal" step="0.5" value="6.00">
       <span class="unit">s 以上</span>
@@ -352,106 +345,62 @@
 
   <p class="note">
     <strong>実測</strong>を押してから、その区分のつもりで一定の間隔で 5 回以上叩いてください。
-    実際に叩いた間隔の平均とばらつきから範囲を作ります。範囲が重なると手前の区分が優先されます。
+    実際の間隔の平均とばらつきから範囲を作ります。範囲が重なると手前の区分が優先されます。
   </p>
 </section>
 
 <section>
-  <p class="lbl">タップ音の登録</p>
-  <div class="row">
-    <button id="mrReg">タップ音を登録 — 5 回叩く</button>
-    <button id="mrRegClear">登録を消去</button>
+  <p class="lbl">受信 — 振動と通知で読む</p>
+
+  <div class="mrout" style="margin-top:0">
+    <div><span class="k">文字</span><b id="rxChar">—</b></div>
+    <div><span class="k">符号</span><b id="rxCode" class="code">—</b></div>
+  </div>
+
+  <div class="row" style="margin-top:11px">
+    <button id="rxTest" class="primary">もう一度再生</button>
+    <button id="rxStop">停止</button>
+    <button id="rxPerm">通知を許可</button>
   </div>
 
   <div class="field" style="margin-top:12px">
-    <p class="lbl" style="margin-bottom:4px">検出しきい値 <span class="val" id="mrThVal">14</span> dB — 暗騒音からの差</p>
-    <input type="range" id="mrTh" min="4" max="36" value="14">
-  </div>
-  <div class="field">
-    <p class="lbl" style="margin-bottom:4px">音色の一致度 <span class="val" id="mrSimVal">0.55</span> — 登録音との近さ</p>
-    <input type="range" id="mrSim" min="0" max="95" value="55">
-  </div>
-  <div class="field">
-    <p class="lbl" style="margin-bottom:4px">不応時間 <span class="val" id="mrRefVal">80</span> ms — 直後の二度打ちを無視</p>
-    <input type="range" id="mrRef" min="30" max="300" step="10" value="80">
+    <p class="lbl" style="margin-bottom:6px">出し方 — 短音は 1 回、長音は連続 2 回</p>
+    <select id="rxOut">
+      <option value="both" selected>振動と通知の両方</option>
+      <option value="vib">振動だけ</option>
+      <option value="notif">通知だけ</option>
+      <option value="none">出さない — 画面表示のみ</option>
+    </select>
   </div>
 
-  <table id="mrTapTbl"></table>
-  <p class="note">
-    登録すると、叩いた音の<strong>スペクトルの形</strong>を覚えて、声・足音・机の物音を弾きます。
-    未登録のときは音量の立ち上がりだけで判定します。誤検出が多いならしきい値と一致度を上げ、拾わないなら下げてください。
-  </p>
-</section>
-
-<section>
-  <p class="lbl">モールス音 — 送信と確認</p>
-  <div class="field"><input type="text" id="mrTx" value="SOS" maxlength="120"></div>
-  <div class="row">
-    <button id="mrPlay" class="primary">モールス音で鳴らす</button>
-    <button id="mrPlayStop">停止</button>
-    <button id="mrToBuf">本文に取り込む</button>
-  </div>
-  <div class="field" style="margin-top:11px">
-    <p class="lbl" style="margin-bottom:4px">単位長 <span class="val" id="mrUnitVal">80</span> ms
-      <span style="color:var(--dim)">/ 約 <span id="mrWpm">15</span> WPM</span></p>
-    <input type="range" id="mrUnit" min="20" max="300" step="5" value="80">
+  <div class="field">
+    <p class="lbl" style="margin-bottom:4px">1 発の長さ <span class="val" id="rxVibVal">60</span> ms</p>
+    <input type="range" id="rxVib" min="20" max="400" step="10" value="60">
   </div>
   <div class="field">
-    <p class="lbl" style="margin-bottom:4px">音の高さ <span class="val" id="mrFreqVal">700</span> Hz</p>
-    <input type="range" id="mrFreq" min="200" max="3000" step="10" value="700">
-  </div>
-  <div class="field">
-    <p class="lbl" style="margin-bottom:4px">音量 <span class="val" id="mrVolVal">40</span> / 100</p>
-    <input type="range" id="mrVol" min="1" max="100" value="40">
-  </div>
-  <p class="lbl" style="margin-bottom:5px">符号</p>
-  <div class="mrout" style="margin-top:0"><div><span class="k">CODE</span><b id="mrPreview" class="code">—</b></div></div>
-
-  <details>
-    <summary>符号表</summary>
-    <table class="codetbl" id="mrCodeTbl"></table>
-  </details>
-</section>
-
-<section>
-  <p class="lbl">通知で受け取る — 実験的</p>
-  <div class="row">
-    <button id="mrNotifPerm">通知を許可</button>
-    <button id="mrNotifPlay" class="primary">通知で送出</button>
-    <button id="mrNotifStop">停止</button>
-  </div>
-  <div class="field" style="margin-top:11px">
-    <p class="lbl" style="margin-bottom:5px">通知の間隔 — 1 打の中 / 区切りの間</p>
+    <p class="lbl" style="margin-bottom:5px">長音の 2 発の間隔 / 要素と要素の間隔</p>
     <div class="fsrow">
-      <input type="number" id="ntIn" inputmode="decimal" step="0.1" value="0.5">
+      <input type="number" id="rxIn" inputmode="numeric" step="10" value="150">
       <span class="dash">/</span>
-      <input type="number" id="ntGap" inputmode="decimal" step="0.1" value="2.0">
-      <span class="unit">s</span>
+      <input type="number" id="rxGap" inputmode="numeric" step="50" value="700">
+      <span class="unit">ms</span>
     </div>
   </div>
-  <label class="chk"><input type="checkbox" id="ntVib" checked>振動も出す</label>
-  <label class="chk"><input type="checkbox" id="ntFlash" checked>画面も光らせる</label>
-  <p class="lbl" id="ntProg" style="margin:4px 0 0">待機中</p>
+  <div class="field">
+    <p class="lbl" style="margin-bottom:5px">文字と文字の間隔</p>
+    <div class="fsrow">
+      <input type="number" id="rxChrGap" inputmode="numeric" step="100" value="1800">
+      <span class="unit">ms</span>
+    </div>
+  </div>
+  <label class="chk"><input type="checkbox" id="rxFlash" checked>画面も光らせる</label>
+  <p class="lbl" id="rxProg" style="margin:4px 0 0">待機中</p>
 
-  <p class="lbl" style="margin:14px 0 6px">受信側 — 届いた通知の回数を押す</p>
-  <div class="kbd">
-    <button data-nc="1" class="sm">1 回 ・</button>
-    <button data-nc="2" class="sm">2 回 －</button>
-    <button data-nc="3" class="sm">3 回 文字</button>
-    <button data-nc="4" class="sm">4 回 単語</button>
-  </div>
-  <div class="kbd">
-    <button id="ncUndo" class="sm">1つ戻す</button>
-    <button id="ncClear" class="sm">消去</button>
-  </div>
-  <div class="mrout">
-    <div><span class="k">符号</span><b id="ncSym" class="code">—</b></div>
-    <div><span class="k">本文</span><b id="ncText">—</b></div>
-  </div>
   <div class="warnbox">
-    送出側は 1 打を<strong>通知の回数</strong>で表します。短点 = 1 回、長点 = 2 回、文字区切り = 3 回、単語区切り = 4 回。
-    受信側は届いた回数のボタンを押すだけで本文に戻ります。
-    ブラウザの通知はページを開いている間だけ出ます。Android Chrome は Service Worker 必須のため通知が出ないことがあり、その場合は振動と画面の光で代替します。
+    超音波を受け取ると、その文字の符号を<strong>短音 = 振動 1 回、長音 = 連続 2 回</strong>で出します。
+    受信を取りこぼさないよう、受信側もマイクを開始したまま待ってください。
+    振動は Android など <code>navigator.vibrate</code> に対応した端末のみで、iOS の Safari では鳴りません。
+    通知はホーム画面に追加したうえで許可した場合に出ます。どちらも使えない環境では画面の点滅が残ります。
   </div>
 </section>
 <div id="mrFlash"></div>
@@ -730,6 +679,8 @@ function stopMic(){
 function onDecoded(text){
   rxCount++;
   $('rxCount').textContent = '合計 ' + rxCount + ' 件';
+  // モールス(先頭が ~)なら振動と通知で出す
+  if (typeof morseRx === 'function' && morseRx(text)) return;
   const m = /^#(\d)\b/.exec(text);
   if (m){
     const i = +m[1];
@@ -960,21 +911,24 @@ applyFs(320); renderScan(); sizeCanvas(); showDiag();
 <script>
 "use strict";
 /* ============================================================
-   タップ入力モールス
-     ・端末を爪で叩いた音をマイクで検出する
-     ・符号を決めるのは「次の音までの時間」。最初の 1 打は
-       計時を始めるだけのダミーで、符号にはならない
-     ・区分の秒数はすべて手入力できる。実測から作ることもできる
+   タップ入力モールス — 1 打ずつ叩いて 1 文字を超音波で送る
+     ・符号を決めるのは「次の音までの時間」
+     ・最初の 1 打はダミー。計時を始めるだけで符号にならない
+     ・最後の 1 打も符号を持たない。直前の間隔が・か－かを確定させる打
+     ・そこから既定 6 秒あくと 1 文字として ggwave で送信する
+     ・受信側は符号を振動(短音 1 回 / 長音 2 回)と通知で出す
    ============================================================ */
 (function(){
 
 const $ = id => document.getElementById(id);
 const clamp = (v,a,b) => v < a ? a : (v > b ? b : v);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 const store = {
   get(k,d){ try{ const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } },
-  set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} },
-  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+  set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
 };
+const REF_MS = 80;                 // 不応時間。直後の二度打ちを無視する
+const TX_PREFIX = '~';             // 超音波で送るときの目印
 
 /* ---------- 符号表 ---------- */
 const EN = {
@@ -993,7 +947,7 @@ const PUNCT = {
   ';':'-.-.-.', '=':'-...-', '+':'.-.-.', '-':'-....-', '_':'..--.-',
   '"':'.-..-.', '$':'...-..-', '@':'.--.-.'
 };
-// 和文。JARL の表に準拠。数字は欧文と共通で、カナと符号が衝突しない
+// 和文。JARL の表に準拠。数字は欧文と共通で、カナと符号は衝突しない
 const JA = {
   'イ':'.-','ロ':'.-.-','ハ':'-...','ニ':'-.-.','ホ':'-..','ヘ':'.','ト':'..-..',
   'チ':'..-.','リ':'--.','ヌ':'....','ル':'-.--.','ヲ':'.---','ワ':'-.-','カ':'.-..',
@@ -1004,69 +958,22 @@ const JA = {
   'シ':'--.-.','ヱ':'.--..','ヒ':'--..-','モ':'-..-.','セ':'.---.','ス':'---.-',
   'ン':'.-.-.','゛':'..','゜':'..--.','ー':'.--.-','、':'.-.-.-','。':'.-.-..'
 };
-const VOICED      = 'ガギグゲゴザジズゼゾダヂヅデドバビブベボヴ';
-const VOICED_BASE = 'カキクケコサシスセソタチツテトハヒフヘホウ';
-const HANDAKU      = 'パピプペポ';
-const HANDAKU_BASE = 'ハヒフヘホ';
-const SMALL      = 'ァィゥェォッャュョヮヵヶ';
-const SMALL_BASE = 'アイウエオツヤユヨワカケ';
 
 function isJa(){ return $('mrCode').value === 'ja'; }
-
 function tables(){
   const enc = {}, dec = {};
   const add = o => { for (const k in o){ enc[k] = o[k]; if (!(o[k] in dec)) dec[o[k]] = k; } };
   if (isJa()){ add(JA); add(DIGIT); } else { add(EN); add(DIGIT); add(PUNCT); }
   return { enc, dec };
 }
-
-// カナを符号化できる形にほどく。ひらがな→カタカナ、濁点・半濁点は独立した符号
-function expandJa(s){
-  let r = '';
-  for (const ch of s){
-    let c = ch;
-    const cp = c.codePointAt(0);
-    if (cp >= 0x3041 && cp <= 0x3096) c = String.fromCodePoint(cp + 0x60);
-    if (c === 'ヷ'){ r += 'ワ゛'; continue; }
-    if (c === '～' || c === '〜'){ r += 'ー'; continue; }
-    if (c === '，'){ c = '、'; }
-    if (c === '．'){ c = '。'; }
-    let i = VOICED.indexOf(c);
-    if (i >= 0){ r += VOICED_BASE[i] + '゛'; continue; }
-    i = HANDAKU.indexOf(c);
-    if (i >= 0){ r += HANDAKU_BASE[i] + '゜'; continue; }
-    i = SMALL.indexOf(c);
-    if (i >= 0){ r += SMALL_BASE[i]; continue; }
-    r += c;
-  }
-  return r;
-}
-
-// 本文 → [{ch, code}] 。code が null なら単語区切り
-function textToCode(text){
-  const { enc } = tables();
-  const src = isJa() ? expandJa(text) : text.toUpperCase();
-  const out = [], skipped = [];
-  for (const ch of src){
-    if (ch === ' ' || ch === '　'){ out.push({ ch:' ', code:null }); continue; }
-    const code = enc[ch];
-    if (code) out.push({ ch, code });
-    else if (ch.trim()) skipped.push(ch);
-  }
-  return { out, skipped };
-}
+const pretty = c => c.replace(/\./g,'・').replace(/-/g,'－');
 
 /* ---------- 区分の秒数 ---------- */
-const RG = {
-  dot : ['rgDotMin','rgDotMax'],
-  dash: ['rgDashMin','rgDashMax'],
-  chr : ['rgChrMin','rgChrMax'],
-  wrd : ['rgWrdMin','rgWrdMax']
-};
-const KEYS = ['dot','dash','chr','wrd'];
-const KNAME = { dot:'・ 短点', dash:'－ 長点', chr:'文字区切り', wrd:'単語区切り', end:'通信終了' };
-const KCOL  = { dot:'#6EE7A8', dash:'#F2A93B', chr:'#4FD1C5', wrd:'#8FA6FF', end:'#FF6B6B' };
-const DEF = { dot:[0.10,0.50], dash:[0.80,1.20], chr:[2.00,2.60], wrd:[3.00,5.00], end:6.00 };
+const RG = { dot:['rgDotMin','rgDotMax'], dash:['rgDashMin','rgDashMax'], chr:['rgChrMin','rgChrMax'] };
+const KEYS = ['dot','dash','chr'];
+const KNAME = { dot:'・ 短点', dash:'－ 長点', chr:'文字区切り', end:'通信終了' };
+const KCOL  = { dot:'#6EE7A8', dash:'#F2A93B', chr:'#4FD1C5' };
+const DEF = { dot:[0.10,0.50], dash:[0.80,1.20], chr:[2.00,2.60], end:6.00 };
 
 function ranges(){
   const r = {};
@@ -1079,7 +986,7 @@ function ranges(){
   }
   let e = parseFloat($('rgEnd').value);
   if (!isFinite(e)) e = DEF.end;
-  r.end = Math.max(e, r.wrd[1] + 0.1);
+  r.end = Math.max(e, r.chr[1] + 0.3);
   return r;
 }
 function setRanges(r){
@@ -1090,33 +997,30 @@ function setRanges(r){
   $('rgEnd').value = r.end.toFixed(2);
   onRangeChange();
 }
-function saveRanges(){ store.set('mr.ranges', ranges()); }
-function loadRanges(){
-  const r = store.get('mr.ranges', null);
-  if (!r) return;
-  try{ setRanges(r); }catch(e){}
-}
-
 function onRangeChange(){
   const r = ranges();
+  // 入れ替えや下限の補正を欄にも書き戻し、表示と実際の値をそろえる
+  for (const k of KEYS){
+    $(RG[k][0]).value = r[k][0].toFixed(2);
+    $(RG[k][1]).value = r[k][1].toFixed(2);
+  }
+  $('rgEnd').value = r.end.toFixed(2);
   $('mrEndLbl').textContent = r.end.toFixed(1);
   renderTrack(r);
-  saveRanges();
-  // 重なりの警告
-  const seq = [r.dot, r.dash, r.chr, r.wrd];
-  for (let i=0;i<seq.length-1;i++){
-    if (seq[i][1] >= seq[i+1][0]){ $('mrState').textContent = '注意 — 区分の範囲が重なっています'; return; }
+  store.set('mr.ranges', r);
+  if (r.dot[1] >= r.dash[0] || r.dash[1] >= r.chr[0]){
+    $('mrState').textContent = '注意 — 区分の範囲が重なっています'; return;
   }
   updState();
 }
-
+// バーは符号として使う範囲だけを映す。送信までの残りは数字で別に出す
+function trackSpan(r){ r = r || ranges(); return Math.max(1.5, r.chr[1] * 1.25); }
 function renderTrack(r){
   r = r || ranges();
-  const total = r.end + 1.0;
+  const total = trackSpan(r);
   const el = $('mrTrack');
   el.querySelectorAll('.z,.zt').forEach(n => n.remove());
   const zones = KEYS.map(k => [k, r[k][0], r[k][1]]);
-  zones.push(['end', r.end, total]);
   for (const [k,a,b] of zones){
     const z = document.createElement('div');
     z.className = 'z';
@@ -1128,21 +1032,19 @@ function renderTrack(r){
     const t = document.createElement('div');
     t.className = 'zt';
     t.style.left = ((a+b)/2/total*100) + '%';
-    t.textContent = k === 'dot' ? '・' : k === 'dash' ? '－' : k === 'chr' ? '字' : k === 'wrd' ? '語' : '終';
+    t.textContent = k === 'dot' ? '・' : k === 'dash' ? '－' : '字';
     el.appendChild(t);
   }
-  $('mrScale').innerHTML = '<span>0 s</span><span>' + (total/2).toFixed(1) + '</span><span>' + total.toFixed(1) + ' s</span>';
+  $('mrScale').innerHTML = '<span>0 s</span><span>' + (total/2).toFixed(2) + '</span><span>' + total.toFixed(2) + ' s</span>';
 }
 
-/* ---------- 入力の状態 ---------- */
-let mode = 'off';            // off | arm | input | calib | reg
-let sym = '', text = '', hist = [];
-let firstTap = true, lastTapMs = 0;
-let noiseDb = -90, lastDb = -120, lastSim = 1, lastPeakDb = -120, prevDb = -120, warm = 0;
-let tapAnalyser = null, specBuf = null, template = null, tmplPeak = null;
+/* ---------- 状態 ---------- */
+let mode = 'off';                 // off | arm | input | calib
+let sym = '', text = '', codes = [], hist = [];
+let firstTap = true, lastTapMs = 0, sending = false;
+let noiseDb = -90, lastDb = -120, lastPeakDb = -120, prevDb = -120, warm = 0;
+let tapAnalyser = null;
 let calKey = null, calTimes = [];
-let regFeats = [], regDb = [];
-const REG_N = 5;
 let rafId = null;
 
 function mrLog(msg, cls){
@@ -1152,21 +1054,20 @@ function mrLog(msg, cls){
   el.scrollTop = el.scrollHeight;
   while (el.childElementCount > 200) el.removeChild(el.firstChild);
 }
-
 function updState(){
   const s = $('mrState');
-  if (!running){ s.textContent = 'マイク未開始'; }
+  if (!running) s.textContent = 'マイク未開始';
   else if (mode === 'off')   s.textContent = '停止中';
   else if (mode === 'arm')   s.textContent = 'ダミー音を待っています — 1 回叩いてください';
   else if (mode === 'input') s.textContent = firstTap ? 'ダミー音を待っています' : '入力中';
   else if (mode === 'calib') s.textContent = '実測中 — ' + KNAME[calKey];
-  else if (mode === 'reg')   s.textContent = 'タップ音を登録中 — あと ' + (REG_N - regFeats.length) + ' 回';
   $('mrListen').textContent = (mode === 'input' || mode === 'arm') ? 'タップ入力を停止' : 'タップ入力を開始';
   $('mrListen').className   = (mode === 'input' || mode === 'arm') ? '' : 'primary';
 }
-
 function render(){
-  $('mrSym').textContent  = sym  || '—';
+  const { dec } = tables();
+  $('mrSym').textContent  = sym ? pretty(sym) : '—';
+  $('mrChar').textContent = sym ? (dec[sym] || '?') : '—';
   $('mrText').textContent = text || '—';
 }
 
@@ -1176,54 +1077,32 @@ function tapAttach(){
     tapAnalyser = ctx.createAnalyser();
     tapAnalyser.fftSize = 1024;
     tapAnalyser.smoothingTimeConstant = 0;
-    specBuf = new Float32Array(tapAnalyser.frequencyBinCount);
     micSource.connect(tapAnalyser);
     noiseDb = -90; warm = 0; prevDb = -120;
     if ($('mrArm').checked && mode === 'off') mode = 'arm';
     if (!rafId) rafId = requestAnimationFrame(tick);
     mrLog('マイクに接続しました', 'g');
-    updState(); renderTapTbl();
+    updState();
   }catch(e){ mrLog('接続に失敗: ' + e.message, 's'); }
 }
 function tapDetach(){
   try{ if (tapAnalyser) tapAnalyser.disconnect(); }catch(e){}
   tapAnalyser = null;
   if (rafId){ cancelAnimationFrame(rafId); rafId = null; }
-  if (mode !== 'off'){ mode = 'off'; }
+  mode = 'off';
   $('mrLevel').style.width = '0%';
-  updState(); renderTapTbl();
+  updState();
 }
 window.tapAttach = tapAttach;
 window.tapDetach = tapDetach;
 
-/* ---------- 検出 ---------- */
-const F_LO = 500, F_HI = 16000, F_BANDS = 32;
-function feature(){
-  if (!tapAnalyser) return null;
-  tapAnalyser.getFloatFrequencyData(specBuf);
-  const binHz = ctx.sampleRate / tapAnalyser.fftSize;
-  const i0 = Math.max(1, Math.round(F_LO/binHz));
-  const i1 = Math.min(specBuf.length-1, Math.round(F_HI/binHz));
-  const f = new Float32Array(F_BANDS);
-  const w = (i1-i0)/F_BANDS;
-  for (let b=0;b<F_BANDS;b++){
-    const a = i0 + Math.floor(b*w), z = i0 + Math.floor((b+1)*w);
-    let s = 0, n = 0;
-    for (let i=a;i<Math.max(a+1,z);i++){ s += Math.max(-120, specBuf[i]); n++; }
-    f[b] = s/n;
-  }
-  let mean = 0; for (let i=0;i<F_BANDS;i++) mean += f[i]; mean /= F_BANDS;
-  let nrm = 0; for (let i=0;i<F_BANDS;i++){ f[i] -= mean; nrm += f[i]*f[i]; }
-  nrm = Math.sqrt(nrm) || 1;
-  for (let i=0;i<F_BANDS;i++) f[i] /= nrm;
-  return f;
-}
-function cosine(a,b){ let s = 0; for (let i=0;i<a.length;i++) s += a[i]*b[i]; return s; }
-
-// 既存の onaudioprocess から 1 ブロックずつ渡される
+/* ---------- 検出。既存の onaudioprocess から 1 ブロックずつ渡される ---------- */
 function tapFeed(pcm){
   if (mode === 'off' || !tapAnalyser) return;
-  if (txBusy){ prevDb = -120; return; }     // 自分が鳴らした音は拾わない
+  if (txBusy || sending){ prevDb = -120; return; }   // 自分の送信音は拾わない
+
+  // 画面が消えていても止まらないよう、送信判定はこちらでも見る
+  checkEnd();
 
   let sum = 0, peak = 0, peakIdx = 0;
   for (let i=0;i<pcm.length;i++){
@@ -1235,7 +1114,7 @@ function tapFeed(pcm){
   const pdb = 20*Math.log10(peak + 1e-9);
   lastDb = db;
 
-  // 暖機。最初の 0.5 秒で暗騒音の高さを掴む。ここでは検出しない
+  // 暖機。最初の 0.5 秒で暗騒音の高さを掴む
   if (warm < 25){
     warm++;
     noiseDb = warm === 1 ? db : noiseDb*0.8 + db*0.2;
@@ -1244,43 +1123,20 @@ function tapFeed(pcm){
   }
 
   const now = performance.now();
-  const thDb  = parseFloat($('mrTh').value);
-  const refMs = parseFloat($('mrRef').value);
-  const simMin = parseFloat($('mrSim').value)/100;
+  const thDb = parseFloat($('mrTh').value);
   // 立ち上がりの鋭さも見る。連続した大きな音では反応しない
-  const hit = db > noiseDb + thDb && db > prevDb + 4 && pdb > -60 && (now - lastTapMs) > refMs;
+  const hit = db > noiseDb + thDb && db > prevDb + 4 && pdb > -60 && (now - lastTapMs) > REF_MS;
   prevDb = db;
 
   if (!hit){
-    // 静かなときほど速く追従させる。叩いた直後の残響で床が持ち上がらないように
     const k = db < noiseDb ? 0.05 : 0.004;
     noiseDb = noiseDb*(1-k) + db*k;
     if (noiseDb < -95) noiseDb = -95;
     return;
   }
-
-  let sim = 1;
-  if (template && mode !== 'reg'){
-    const f = feature();
-    if (f) sim = cosine(f, template);
-    if (sim < simMin){ lastSim = sim; return; }
-  }
-  lastSim = sim; lastPeakDb = db;
-
-  // ブロック内のピーク位置まで時刻を戻して、フレーム量子化を減らす
-  const tMs = now - (pcm.length - peakIdx)/ctx.sampleRate*1000;
-
-  if (mode === 'reg'){
-    const f = feature();
-    if (f){ regFeats.push(f); regDb.push(db); }
-    lastTapMs = tMs;
-    mrLog('登録 ' + regFeats.length + '/' + REG_N + ' — ' + db.toFixed(1) + ' dB', 's');
-    if (regFeats.length >= REG_N) finishReg();
-    updState(); renderTapTbl();
-    return;
-  }
-
-  onTap(tMs);
+  lastPeakDb = db;
+  // ブロック内のピーク位置まで時刻を戻し、フレーム量子化を減らす
+  onTap(now - (pcm.length - peakIdx)/ctx.sampleRate*1000);
 }
 window.tapFeed = tapFeed;
 
@@ -1288,16 +1144,14 @@ function onTap(tMs){
   const gap = firstTap ? null : (tMs - lastTapMs)/1000;
   lastTapMs = tMs;
   flash(70);
-  if (navigator.vibrate) { try{ navigator.vibrate(12); }catch(e){} }
+  if (navigator.vibrate){ try{ navigator.vibrate(12); }catch(e){} }
 
   if (mode === 'calib'){
     if (gap != null && gap < 30){ calTimes.push(gap); renderCal(); }
     firstTap = false;
     return;
   }
-
-  if (mode === 'arm'){ mode = 'input'; }
-
+  if (mode === 'arm') mode = 'input';
   if (firstTap){
     firstTap = false;
     mrLog('ダミー音 — 計時を開始', 's');
@@ -1306,15 +1160,14 @@ function onTap(tMs){
   }
 
   const k = classify(gap);
-  if (k === null){
-    mrLog(gap.toFixed(2) + ' s — どの区分にも入りません', 's');
-    return;
-  }
+  if (k === null){ mrLog(gap.toFixed(2) + ' s — どの区分にも入りません', 's'); return; }
   if (k === 'end'){ finalize(true); return; }
   mrLog(gap.toFixed(2) + ' s → ' + KNAME[k]);
   applyElem(k);
 }
 
+// 範囲外は近いほうへ寄せる。ただし寄せるのは端から一定の範囲まで。
+// 区切りを廃したぶん長い無音が空くので、遠い間隔は捨てて誤りを防ぐ
 function classify(g){
   const r = ranges();
   if (g >= r.end) return 'end';
@@ -1323,58 +1176,59 @@ function classify(g){
   let best = null, bd = 1e9;
   for (const k of KEYS){
     const d = g < r[k][0] ? r[k][0]-g : g - r[k][1];
-    if (d < bd){ bd = d; best = k; }
+    const tol = Math.max(0.15, (r[k][1]-r[k][0])*0.4);
+    if (d <= tol && d < bd){ bd = d; best = k; }
   }
-  if (g > r.wrd[1] && (r.end - g) < bd) return 'end';
   return best;
 }
 
 function applyElem(k){
-  hist.push([sym, text]);
-  if (hist.length > 300) hist.shift();
-  if      (k === 'dot')  sym += '.';
-  else if (k === 'dash') sym += '-';
-  else if (k === 'chr')  flushChar();
-  else if (k === 'wrd'){ flushChar(); text += ' '; }
+  hist.push([sym, text, codes.slice()]);
+  if (hist.length > 100) hist.shift();
+  if (k === 'chr') flushChar();
+  else sym += (k === 'dot') ? '.' : '-';
   render();
 }
 function flushChar(){
   if (!sym) return;
   const { dec } = tables();
-  const c = dec[sym];
-  if (!c) mrLog('未定義の符号 ' + sym, 's');
-  text += c || '?';
+  codes.push(sym);
+  text += dec[sym] || '?';
   sym = '';
+}
+
+function checkEnd(){
+  if (mode !== 'input' || firstTap || sending) return;
+  const r = ranges();
+  if ((performance.now() - lastTapMs)/1000 >= r.end) finalize(true);
 }
 
 async function finalize(auto){
   flushChar();
   render();
-  const t = text.trim();
+  const list = codes.slice(), body = text;
   firstTap = true;
   mode = (running && $('mrArm').checked) ? 'arm' : 'off';
   updState();
-  if (!t){ return; }
-  mrLog('通信終了 → 「' + t + '」', 'g');
-  if (auto && !$('mrAuto').checked) return;
-  text = ''; sym = ''; hist = []; render();
-  await doSend(t);
+  if (!list.length) return;
+  mrLog('終了ダミーを確定 → 「' + body + '」 ' + list.map(pretty).join(' '), 'g');
+  if (auto && !$('mrAuto').checked) return;      // 自動送信が切なら本文を残す
+  codes = []; text = ''; sym = ''; hist = []; render();
+  await doSend(list, body);
 }
 
-async function doSend(t){
-  const tgt = $('mrTarget').value;
-  if (tgt === 'none'){ mrLog('送信なし(表示のみ)'); return; }
-  if (tgt === 'gg' || tgt === 'both'){
-    try{
-      $('txText').value = t;
-      mrLog('ggwave で送信 …', 's');
-      await send();
-    }catch(e){ mrLog('ggwave 送信エラー: ' + e.message, 's'); }
-  }
-  if (tgt === 'morse' || tgt === 'both'){
-    $('mrTx').value = t;
-    updPreview();
-    await playMorse(t);
+async function doSend(list, body){
+  if (sending) return;
+  sending = true;
+  try{
+    $('txText').value = TX_PREFIX + list.join('/');
+    mrLog('超音波で送信 「' + body + '」 …', 's');
+    await send();
+  }catch(e){
+    mrLog('送信エラー: ' + e.message, 's');
+  }finally{
+    sending = false;
+    prevDb = -120;
   }
 }
 
@@ -1393,6 +1247,15 @@ function stopCal(){
   document.querySelectorAll('[data-cal]').forEach(b => b.classList.remove('on'));
   updState();
 }
+function stat(a){
+  const n = a.length, mean = a.reduce((s,v)=>s+v,0)/n;
+  const sd = Math.sqrt(a.reduce((s,v)=>s+(v-mean)*(v-mean),0)/n);
+  return { mean, sd, min:Math.min.apply(null,a), max:Math.max.apply(null,a), n };
+}
+function calRange(st){
+  const m = Math.max(st.sd*2, st.mean*0.25, 0.05);
+  return [Math.max(0.02, st.mean - m), st.mean + m];
+}
 function renderCal(){
   if (!calKey) return;
   const n = calTimes.length;
@@ -1409,68 +1272,14 @@ function renderCal(){
   $('calApply').disabled = n < 3;
   $('cal' + calKey.charAt(0).toUpperCase() + calKey.slice(1) + 'N').textContent = n ? ('実測 ' + n + ' 回') : '';
 }
-function stat(a){
-  const n = a.length, mean = a.reduce((s,v)=>s+v,0)/n;
-  const sd = Math.sqrt(a.reduce((s,v)=>s+(v-mean)*(v-mean),0)/n);
-  return { mean, sd, min:Math.min.apply(null,a), max:Math.max.apply(null,a), n };
-}
-function calRange(st){
-  const m = Math.max(st.sd*2, st.mean*0.25, 0.05);
-  return [Math.max(0.02, st.mean - m), st.mean + m];
-}
 function applyCal(){
   if (!calKey || calTimes.length < 3) return;
   const r = calRange(stat(calTimes));
   $(RG[calKey][0]).value = r[0].toFixed(2);
   $(RG[calKey][1]).value = r[1].toFixed(2);
   mrLog(KNAME[calKey] + ' を ' + r[0].toFixed(2) + '–' + r[1].toFixed(2) + ' s に更新', 'g');
-  const k = calKey;
   stopCal();
   onRangeChange();
-  const rr = ranges();
-  if (k === 'wrd' && rr.end <= rr.wrd[1] + 0.1) $('rgEnd').value = (rr.wrd[1]+1).toFixed(2);
-  onRangeChange();
-}
-
-/* ---------- タップ音の登録 ---------- */
-function startReg(){
-  if (!running){ mrLog('先にマイクを開始してください', 's'); return; }
-  regFeats = []; regDb = []; mode = 'reg';
-  mrLog('登録開始 — 同じ叩き方で ' + REG_N + ' 回', 's');
-  updState(); renderTapTbl();
-}
-function finishReg(){
-  const t = new Float32Array(F_BANDS);
-  for (const f of regFeats) for (let i=0;i<F_BANDS;i++) t[i] += f[i];
-  let n = 0; for (let i=0;i<F_BANDS;i++) n += t[i]*t[i];
-  n = Math.sqrt(n) || 1;
-  for (let i=0;i<F_BANDS;i++) t[i] /= n;
-  template = t;
-  tmplPeak = regDb.reduce((s,v)=>s+v,0)/regDb.length;
-  store.set('mr.template', Array.from(t));
-  store.set('mr.tmplPeak', tmplPeak);
-  // 登録音と暗騒音の差から、しきい値の初期値を決める
-  const sug = clamp(Math.round((tmplPeak - noiseDb) * 0.55), 6, 34);
-  $('mrTh').value = sug; $('mrThVal').textContent = sug;
-  store.set('mr.th', sug);
-  mode = (running && $('mrArm').checked) ? 'arm' : 'off';
-  mrLog('登録しました — 平均 ' + tmplPeak.toFixed(1) + ' dB / しきい値を ' + sug + ' dB に設定', 'g');
-  updState(); renderTapTbl();
-}
-function clearReg(){
-  template = null; tmplPeak = null;
-  store.del('mr.template'); store.del('mr.tmplPeak');
-  mrLog('登録を消去しました', 's');
-  renderTapTbl();
-}
-function renderTapTbl(){
-  const rows = [
-    ['登録状態', template ? '<span class="ok">登録済み — 音色で選別中</span>' : '<span class="warn">未登録 — 音量だけで判定</span>'],
-    ['暗騒音', running ? noiseDb.toFixed(1) + ' dB' : '—'],
-    ['直近の検出', lastPeakDb > -119 ? lastPeakDb.toFixed(1) + ' dB / 一致度 ' + lastSim.toFixed(2) : '—'],
-    ['登録時の平均', tmplPeak == null ? '—' : tmplPeak.toFixed(1) + ' dB']
-  ];
-  $('mrTapTbl').innerHTML = rows.map(r => '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td></tr>').join('');
 }
 
 /* ---------- 画面を光らせる ---------- */
@@ -1483,144 +1292,96 @@ function flash(ms){
 }
 
 /* ---------- 毎フレームの更新 ---------- */
-let tickN = 0;
 function tick(){
   rafId = requestAnimationFrame(tick);
-  if ((tickN++ % 30) === 0) renderTapTbl();
   const r = ranges();
-  const total = r.end + 1.0;
-  let el = 0;
-  if ((mode === 'input' || mode === 'calib') && !firstTap) el = (performance.now() - lastTapMs)/1000;
+  const total = trackSpan(r);
+  const counting = (mode === 'input' || mode === 'calib') && !firstTap;
+  const el = counting ? (performance.now() - lastTapMs)/1000 : 0;
   $('mrCursor').style.left = clamp(el/total*100, 0, 100) + '%';
+  $('mrCursor').style.background = el > total ? 'var(--hot)' : 'var(--ink)';
   $('mrGap').textContent = el.toFixed(2) + ' s';
+  $('mrCount').textContent = (counting && mode === 'input')
+    ? '送信まで ' + Math.max(0, r.end - el).toFixed(1) + ' 秒'
+    : '送信まで —';
   $('mrLevel').style.width = clamp((lastDb + 75)/65*100, 0, 100) + '%';
-  if (mode === 'input' && !firstTap && el >= r.end) finalize(true);
+  checkEnd();
 }
 
-/* ---------- モールス音 ---------- */
-let morseNodes = [], morseTimer = null;
-function updPreview(){
-  const { out, skipped } = textToCode($('mrTx').value);
-  const s = out.map(o => o.code === null ? '/' : o.code).join(' ');
-  $('mrPreview').textContent = s || '—';
-  if (skipped.length) $('mrPreview').textContent = s + '  (未対応: ' + skipped.join('') + ')';
-}
-function morseStop(){
-  morseNodes.forEach(n => { try{ n.stop(); }catch(e){} try{ n.disconnect(); }catch(e){} });
-  morseNodes = [];
-  if (morseTimer){ clearTimeout(morseTimer); morseTimer = null; }
-  txBusy = false;
-  $('mrPlay').disabled = false;
-}
-async function playMorse(t){
-  const { out } = textToCode(t);
-  if (!out.length) return;
-  const unit = clamp(parseFloat($('mrUnit').value)||80, 20, 400)/1000;
-  const freq = clamp(parseInt($('mrFreq').value,10)||700, 100, 4000);
-  const vol  = clamp(parseInt($('mrVol').value,10)||40, 1, 100)/100 * 0.5;
-  morseStop();
-  await ensureCtx();
-  setSession(running ? 'play-and-record' : 'playback');
+/* ============================================================
+   受信側 — 振動と通知
+   ============================================================ */
+let rxList = [], rxAbort = false, rxBusy = false;
 
-  const seq = [];
-  let t0 = 0;
-  out.forEach(o => {
-    if (o.code === null){ t0 += 4*unit; return; }   // 文字間の 3 単位に足して 7 単位
-    for (const e of o.code){
-      const d = (e === '.' ? 1 : 3) * unit;
-      seq.push([t0, d]); t0 += d + unit;
-    }
-    t0 += 2*unit;
-  });
-  const start = ctx.currentTime + 0.08;
-  const master = ctx.createGain();
-  master.gain.value = vol;
-  master.connect(ctx.destination);
-  morseNodes.push(master);
-  for (const [s,d] of seq){
-    const o = ctx.createOscillator(), g2 = ctx.createGain();
-    o.type = 'sine'; o.frequency.value = freq;
-    g2.gain.setValueAtTime(0, start+s);
-    g2.gain.linearRampToValueAtTime(1, start+s+0.006);
-    g2.gain.setValueAtTime(1, start+s+Math.max(0.008,d-0.006));
-    g2.gain.linearRampToValueAtTime(0, start+s+d);
-    o.connect(g2); g2.connect(master);
-    o.start(start+s); o.stop(start+s+d+0.02);
-    morseNodes.push(o);
+// 既存の onDecoded から呼ばれる。モールスなら true を返して以降の処理を止める
+function morseRx(text){
+  if (typeof text !== 'string' || text.charAt(0) !== TX_PREFIX) return false;
+  const list = text.slice(1).split('/').map(c => c.replace(/[^.\-]/g, '')).filter(Boolean);
+  if (!list.length) return false;
+  const { dec } = tables();
+  const body = list.map(c => dec[c] || '?').join('');
+  rxList = list;
+  $('rxCode').textContent = list.map(pretty).join(' ');
+  $('rxChar').textContent = body;
+  mrLog('受信 「' + body + '」 ' + list.map(pretty).join(' '), 'g');
+  log('モールス受信 → ' + body);
+  rxPlay(list);
+  return true;
+}
+window.morseRx = morseRx;
+
+function pulse(){
+  const ms = clamp(parseInt($('rxVib').value,10)||60, 20, 400);
+  const out = $('rxOut').value;
+  if ((out === 'vib' || out === 'both') && navigator.vibrate){
+    try{ navigator.vibrate(ms); }catch(e){}
   }
-  txBusy = true;
-  $('mrPlay').disabled = true;
-  mrLog('モールス音 ' + (t0).toFixed(1) + ' 秒 — 「' + t + '」', 'g');
-  await new Promise(res => { morseTimer = setTimeout(res, (t0 + 0.35)*1000); });
-  morseStop();
+  if ($('rxFlash').checked) flash(ms + 40);
+  return ms;
 }
-
-/* ---------- 通知で送出 ---------- */
-let ntStop = false;
-async function notifPerm(){
-  if (!('Notification' in window)){ mrLog('この環境は通知に対応していません', 's'); return; }
-  try{
-    const p = await Notification.requestPermission();
-    mrLog('通知の許可: ' + p, p === 'granted' ? 'g' : 's');
-  }catch(e){ mrLog('通知の許可に失敗: ' + e.message, 's'); }
-}
-function oneNotify(label, i, n){
-  if ($('ntFlash').checked) flash(120);
-  if ($('ntVib').checked && navigator.vibrate){ try{ navigator.vibrate(60); }catch(e){} }
+function notify(kind, i, n){
   try{
     if ('Notification' in window && Notification.permission === 'granted'){
-      const nt = new Notification('モールス ' + label, { body: i + ' / ' + n + ' 回目', tag:'mr', silent:false });
-      setTimeout(() => { try{ nt.close(); }catch(e){} }, 1200);
+      const t = new Notification(kind === '.' ? '短音 ・' : '長音 －', {
+        body: i + ' / ' + n, tag: 'mr' + Date.now(), silent: false
+      });
+      setTimeout(() => { try{ t.close(); }catch(e){} }, 1500);
     }
   }catch(e){ /* Android Chrome は new Notification が使えない。振動と光で代替 */ }
 }
-const NT_COUNT = { '.':1, '-':2, 'chr':3, 'wrd':4 };
-async function notifyMorse(t){
-  const { out } = textToCode(t);
-  if (!out.length) return;
-  const inS  = clamp(parseFloat($('ntIn').value)||0.5, 0.15, 5) * 1000;
-  const gapS = clamp(parseFloat($('ntGap').value)||2.0, 0.3, 10) * 1000;
-  ntStop = false;
-  const items = [];
-  out.forEach((o, idx) => {
-    if (o.code === null){ items.push(['wrd', 4, '単語区切り']); return; }
-    for (const e of o.code) items.push([e, NT_COUNT[e], e === '.' ? '短点' : '長点']);
-    if (idx < out.length-1 && out[idx+1].code !== null) items.push(['chr', 3, '文字区切り']);
-  });
-  for (let i=0;i<items.length;i++){
-    if (ntStop) break;
-    const [, n, label] = items[i];
-    $('ntProg').textContent = '送出中 ' + (i+1) + ' / ' + items.length + ' — ' + label + ' ' + n + ' 回';
-    for (let j=0;j<n;j++){
-      if (ntStop) break;
-      oneNotify(label, j+1, n);
-      await sleep(inS);
-    }
-    await sleep(gapS - inS > 0 ? gapS - inS : 200);
-  }
-  $('ntProg').textContent = ntStop ? '停止しました' : '送出しました';
-}
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-/* ---------- 通知回数からの復号 ---------- */
-let ncSym = '', ncText = '', ncHist = [];
-function ncPush(n){
-  ncHist.push([ncSym, ncText]);
-  if (n === 1) ncSym += '.';
-  else if (n === 2) ncSym += '-';
-  else if (n === 3) ncFlush();
-  else if (n === 4){ ncFlush(); ncText += ' '; }
-  ncRender();
-}
-function ncFlush(){
-  if (!ncSym) return;
+async function rxPlay(list){
+  if (typeof list === 'string') list = [list];
+  list = (list || []).filter(Boolean);
+  if (!list.length) return;
+  rxAbort = false;
+  if (rxBusy){ rxAbort = true; await sleep(60); rxAbort = false; }
+  rxBusy = true;
+  const out = $('rxOut').value;
+  const inMs  = clamp(parseInt($('rxIn').value,10)||150, 30, 3000);
+  const gapMs = clamp(parseInt($('rxGap').value,10)||700, 100, 8000);
+  const chMs  = clamp(parseInt($('rxChrGap').value,10)||1800, 200, 20000);
   const { dec } = tables();
-  ncText += dec[ncSym] || '?';
-  ncSym = '';
-}
-function ncRender(){
-  $('ncSym').textContent  = ncSym  || '—';
-  $('ncText').textContent = ncText || '—';
+  outer:
+  for (let c=0; c<list.length; c++){
+    const code = list[c];
+    for (let e=0; e<code.length; e++){
+      if (rxAbort) break outer;
+      const n = code[e] === '.' ? 1 : 2;
+      $('rxProg').textContent = '再生中 ' + (c+1) + '/' + list.length + ' 文字目「' + (dec[code] || '?') +
+                               '」 ' + (e+1) + '/' + code.length + ' — ' + (n === 1 ? '短音' : '長音');
+      for (let i=0;i<n;i++){
+        if (rxAbort) break outer;
+        const ms = pulse();
+        if (out === 'notif' || out === 'both') notify(code[e], i+1, n);
+        if (i < n-1) await sleep(Math.max(inMs, ms + 20));
+      }
+      if (e < code.length-1) await sleep(gapMs);
+    }
+    if (c < list.length-1) await sleep(chMs);
+  }
+  $('rxProg').textContent = rxAbort ? '停止しました' : '再生しました';
+  rxBusy = false;
 }
 
 /* ============================================================
@@ -1629,21 +1390,27 @@ function ncRender(){
 $('mrListen').onclick = () => {
   if (!running){ mrLog('先に上の「マイクを開始」を押してください', 's'); return; }
   if (mode === 'input' || mode === 'arm'){
-    flushChar(); render();
     mode = 'off'; firstTap = true;
-    mrLog('入力を停止しました。本文は残しています');
+    mrLog('入力を停止しました。符号は残しています');
   } else {
     if (mode === 'calib') stopCal();
     mode = 'arm'; firstTap = true;
   }
   updState();
 };
-$('mrNow').onclick   = () => { if (mode === 'input') { finalize(false); } else { flushChar(); render(); const t = text.trim(); if (t){ text=''; sym=''; render(); doSend(t); } } };
-$('mrClear').onclick = () => { sym = ''; text = ''; hist = []; firstTap = true; render(); mrLog('消去しました'); };
+$('mrNow').onclick = () => {
+  flushChar(); render();
+  if (!codes.length){ mrLog('送る符号がありません', 's'); return; }
+  const list = codes.slice(), body = text;
+  codes = []; text = ''; sym = ''; hist = []; firstTap = true; render();
+  doSend(list, body);
+};
+$('mrClear').onclick = () => { sym = ''; text = ''; codes = []; hist = []; firstTap = true; render(); mrLog('消去しました'); };
 $('mrUndo').onclick  = () => {
+  if (!hist.length){ mrLog('戻せる操作がありません', 's'); return; }
   const h = hist.pop();
-  if (!h){ mrLog('戻せる操作がありません', 's'); return; }
-  sym = h[0]; text = h[1]; render();
+  sym = h[0]; text = h[1]; codes = h[2];
+  render();
 };
 document.querySelectorAll('[data-mr]').forEach(b => {
   b.onclick = () => {
@@ -1653,11 +1420,17 @@ document.querySelectorAll('[data-mr]').forEach(b => {
     updState(); applyElem(b.dataset.mr);
   };
 });
-$('mrCode').onchange = () => { renderCodeTbl(); updPreview(); render(); ncRender(); store.set('mr.code', $('mrCode').value); };
-$('mrTarget').onchange = () => store.set('mr.target', $('mrTarget').value);
-['mrArm','mrAuto','mrSnap'].forEach(id => { $(id).onchange = () => { store.set('mr.'+id, $(id).checked); if (id==='mrArm' && running && mode==='off' && $(id).checked) { mode='arm'; } updState(); }; });
+$('mrCode').onchange = () => { renderCodeTbl(); render(); store.set('mr.code', $('mrCode').value); };
+['mrArm','mrAuto','mrSnap'].forEach(id => {
+  $(id).onchange = () => {
+    store.set('mr.'+id, $(id).checked);
+    if (id === 'mrArm' && running && mode === 'off' && $(id).checked) mode = 'arm';
+    updState();
+  };
+});
+$('mrTh').oninput = e => { $('mrThVal').textContent = e.target.value; store.set('mr.th', +e.target.value); };
 
-for (const k of KEYS){ RG[k].forEach(id => { $(id).onchange = onRangeChange; }); }
+for (const k of KEYS) RG[k].forEach(id => { $(id).onchange = onRangeChange; });
 $('rgEnd').onchange = onRangeChange;
 document.querySelectorAll('[data-cal]').forEach(b => {
   b.onclick = () => { if (mode === 'calib' && calKey === b.dataset.cal) stopCal(); else startCal(b.dataset.cal); };
@@ -1667,50 +1440,38 @@ $('calCancel').onclick = stopCal;
 document.querySelectorAll('[data-preset]').forEach(b => {
   b.onclick = () => {
     const p = b.dataset.preset, f = p === 'fast' ? 0.6 : p === 'slow' ? 1.5 : 1;
-    const r = {};
-    for (const k of KEYS) r[k] = [DEF[k][0]*f, DEF[k][1]*f];
-    r.end = DEF.end*f;
-    setRanges(r);
-    mrLog('タイミングを' + (p==='std'?'既定に戻しました':'×'+f+' にしました'), 'g');
+    const nr = { end: DEF.end*f };
+    for (const k of KEYS) nr[k] = [DEF[k][0]*f, DEF[k][1]*f];
+    setRanges(nr);
+    mrLog('タイミングを' + (p === 'std' ? '既定に戻しました' : '×' + f + ' にしました'), 'g');
   };
 });
 
-$('mrReg').onclick      = () => { if (mode === 'reg'){ mode='off'; regFeats=[]; mrLog('登録を中止','s'); updState(); } else startReg(); };
-$('mrRegClear').onclick = clearReg;
-$('mrTh').oninput  = e => { $('mrThVal').textContent = e.target.value; store.set('mr.th', +e.target.value); };
-$('mrSim').oninput = e => { $('mrSimVal').textContent = (e.target.value/100).toFixed(2); store.set('mr.sim', +e.target.value); };
-$('mrRef').oninput = e => { $('mrRefVal').textContent = e.target.value; store.set('mr.ref', +e.target.value); };
-
-$('mrTx').oninput   = updPreview;
-$('mrPlay').onclick = () => playMorse($('mrTx').value);
-$('mrPlayStop').onclick = morseStop;
-$('mrToBuf').onclick = () => { text = $('mrTx').value; sym = ''; render(); mrLog('本文に取り込みました'); };
-$('mrUnit').oninput = e => {
-  $('mrUnitVal').textContent = e.target.value;
-  $('mrWpm').textContent = Math.round(1200/(+e.target.value));
-  store.set('mr.unit', +e.target.value);
+$('rxTest').onclick = () => rxPlay(rxList.length ? rxList : (sym ? [sym] : codes));
+$('rxStop').onclick = () => { rxAbort = true; };
+$('rxPerm').onclick = async () => {
+  if (!('Notification' in window)){ mrLog('この環境は通知に対応していません', 's'); return; }
+  try{ mrLog('通知の許可: ' + await Notification.requestPermission(), 'g'); }
+  catch(e){ mrLog('通知の許可に失敗: ' + e.message, 's'); }
 };
-$('mrFreq').oninput = e => { $('mrFreqVal').textContent = e.target.value; store.set('mr.freq', +e.target.value); };
-$('mrVol').oninput  = e => { $('mrVolVal').textContent = e.target.value; store.set('mr.vol', +e.target.value); };
-
-$('mrNotifPerm').onclick = notifPerm;
-$('mrNotifPlay').onclick = () => notifyMorse($('mrTx').value);
-$('mrNotifStop').onclick = () => { ntStop = true; };
-document.querySelectorAll('[data-nc]').forEach(b => { b.onclick = () => ncPush(+b.dataset.nc); });
-$('ncUndo').onclick  = () => { const h = ncHist.pop(); if (h){ ncSym = h[0]; ncText = h[1]; ncRender(); } };
-$('ncClear').onclick = () => { ncSym = ''; ncText = ''; ncHist = []; ncRender(); };
+$('rxOut').onchange  = () => store.set('mr.rxOut', $('rxOut').value);
+$('rxVib').oninput   = e => { $('rxVibVal').textContent = e.target.value; store.set('mr.rxVib', +e.target.value); };
+$('rxIn').onchange   = e => store.set('mr.rxIn', +e.target.value);
+$('rxGap').onchange  = e => store.set('mr.rxGap', +e.target.value);
+$('rxChrGap').onchange = e => store.set('mr.rxChrGap', +e.target.value);
+$('rxFlash').onchange = e => store.set('mr.rxFlash', e.target.checked);
 
 /* ---------- 符号表 ---------- */
 function renderCodeTbl(){
   const src = isJa() ? Object.assign({}, JA, DIGIT) : Object.assign({}, EN, DIGIT, PUNCT);
   const ks = Object.keys(src);
-  let html = '', col = isJa() ? 3 : 4;
+  const col = isJa() ? 3 : 4;
+  let html = '';
   for (let i=0;i<ks.length;i+=col){
     html += '<tr>';
     for (let j=0;j<col;j++){
       const k = ks[i+j];
-      html += k ? '<td>' + (k === ' ' ? '␣' : k) + '</td><td>' + src[k].replace(/\./g,'・').replace(/-/g,'－') + '</td>'
-                : '<td></td><td></td>';
+      html += k ? '<td>' + k + '</td><td>' + pretty(src[k]) + '</td>' : '<td></td><td></td>';
     }
     html += '</tr>';
   }
@@ -1719,21 +1480,22 @@ function renderCodeTbl(){
 
 /* ---------- 復帰 ---------- */
 (function restore(){
-  const c = store.get('mr.code', null);      if (c) $('mrCode').value = c;
-  const tg = store.get('mr.target', null);   if (tg) $('mrTarget').value = tg;
-  ['mrArm','mrAuto','mrSnap'].forEach(id => { const v = store.get('mr.'+id, null); if (v !== null) $(id).checked = v; });
-  const th = store.get('mr.th', null);   if (th !== null){ $('mrTh').value = th; $('mrThVal').textContent = th; }
-  const sm = store.get('mr.sim', null);  if (sm !== null){ $('mrSim').value = sm; $('mrSimVal').textContent = (sm/100).toFixed(2); }
-  const rf = store.get('mr.ref', null);  if (rf !== null){ $('mrRef').value = rf; $('mrRefVal').textContent = rf; }
-  const un = store.get('mr.unit', null); if (un !== null){ $('mrUnit').value = un; $('mrUnitVal').textContent = un; $('mrWpm').textContent = Math.round(1200/un); }
-  const fq = store.get('mr.freq', null); if (fq !== null){ $('mrFreq').value = fq; $('mrFreqVal').textContent = fq; }
-  const vl = store.get('mr.vol', null);  if (vl !== null){ $('mrVol').value = vl; $('mrVolVal').textContent = vl; }
-  const tp = store.get('mr.template', null);
-  if (tp && tp.length === F_BANDS){ template = Float32Array.from(tp); tmplPeak = store.get('mr.tmplPeak', null); }
-  loadRanges();
+  const c = store.get('mr.code', null); if (c) $('mrCode').value = c;
+  ['mrArm','mrAuto','mrSnap','rxFlash'].forEach(id => {
+    const v = store.get('mr.'+(id === 'rxFlash' ? 'rxFlash' : id), null);
+    if (v !== null) $(id).checked = v;
+  });
+  const th = store.get('mr.th', null);    if (th !== null){ $('mrTh').value = th; $('mrThVal').textContent = th; }
+  const ro = store.get('mr.rxOut', null); if (ro) $('rxOut').value = ro;
+  const rv = store.get('mr.rxVib', null); if (rv !== null){ $('rxVib').value = rv; $('rxVibVal').textContent = rv; }
+  const ri = store.get('mr.rxIn', null);  if (ri !== null) $('rxIn').value = ri;
+  const rg = store.get('mr.rxGap', null); if (rg !== null) $('rxGap').value = rg;
+  const rc = store.get('mr.rxChrGap', null); if (rc !== null) $('rxChrGap').value = rc;
+  const r  = store.get('mr.ranges', null);
+  if (r && r.dot && r.dash && r.chr){ try{ setRanges(r); }catch(e){} }
 })();
 
-renderCodeTbl(); updPreview(); render(); ncRender(); onRangeChange(); renderTapTbl(); updState();
+renderCodeTbl(); render(); onRangeChange(); updState();
 })();
 </script>
 </body>
