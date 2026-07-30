@@ -192,10 +192,22 @@
       <button id="chatTap">タップ入力を開始</button>
     </div>
 
+    <div class="mrstat">
+      <span id="mrState1">マイク未開始</span>
+      <span id="mrGap1">0.00 s</span>
+    </div>
+    <div class="track" id="mrTrack1"><i id="mrCursor1"></i></div>
+    <div class="scale" id="mrScale1"></div>
+    <p class="lbl" id="mrCount1" style="margin:7px 0 0">送信まで —</p>
+    <div class="meter" style="margin-top:7px"><i id="mrLevel1"></i></div>
+
     <div class="kbd">
       <button data-mr="dot">・</button>
       <button data-mr="dash">－</button>
       <button data-mr="chr" class="sm">文字区切り</button>
+    </div>
+    <div class="kbd">
+      <button id="chatClear" class="sm">消去</button>
       <button id="chatNow" class="sm">今すぐ送信</button>
     </div>
     <p class="lbl" id="chatTapStat" style="margin:9px 0 0">タップ入力 停止中</p>
@@ -311,12 +323,15 @@
   <table id="measTbl" style="margin-top:7px"></table>
   <table id="rateTbl" style="margin-top:9px"></table>
   <div class="field" style="margin-top:11px">
-    <p class="lbl" style="margin-bottom:4px">トーン周波数 <span class="val" id="toneVal">18000</span> Hz</p>
+    <p class="lbl" style="margin-bottom:4px">トーン周波数 <span class="val" id="toneVal">18000</span> Hz
+      <span style="color:var(--dim)">/ この端末で出せる上限 <span id="toneCeil">23000</span> Hz</span></p>
     <input type="range" id="tone" min="8000" max="23000" step="250" value="18000">
   </div>
   <p class="note">
     スイープは全体像の把握用。単一トーンは「自分に聞こえるか」「相手に届くか」を 1 点ずつ詰めるのに使います。
     鳴らしながらスライダーを動かすと、可聴限界がその場で分かります。
+    <br>スライダーの上限は <code>AudioContext</code> の実レートの半分です。ここが 24 kHz で止まる端末では、
+    どう設定しても 24 kHz より上の音は出せず、受けることもできません。
   </p>
 </section>
 
@@ -524,15 +539,20 @@
     <select id="rate">
       <option value="48000" selected>48000 Hz — 幅 4500 Hz / 上限 24 kHz(既定)</option>
       <option value="96000">96000 Hz — 幅 9000 Hz / 上限 48 kHz(対応機のみ)</option>
+      <option value="192000">192000 Hz — 幅 18000 Hz / 上限 96 kHz(外付け機材向け)</option>
     </select>
   </div>
   <div class="warnbox">
-    ggwave はフレーム長を 1024 より長くできないので、内部レートを上げるとビン幅が
-    そのまま太くなります。96 kHz にすると上限は 48 kHz まで伸びますが、
-    <strong>占有幅も 9000 Hz に倍増</strong>し、1 フレームの時間が半分になるぶん弱くなります。
-    <br>そしてこれが効くのは<strong>マイクとスピーカーが実際に 96 kHz を扱える機種だけ</strong>です。
-    iPhone の内蔵マイクは 48 kHz なので、いくら内部レートを上げても 24 kHz より上には何も入りません。
-    まず「サンプルレートを調べる」で確かめてください。変更すると<strong>マイクを再起動</strong>します。
+    <strong>上限 24 kHz は物理的な壁です。</strong>音を 1 秒間に 48000 回しか測らない装置では、
+    24 kHz より上の音は原理的に記録できません(標本化定理)。ソフトの都合ではないので、
+    設定をどう変えても 48 kHz のマイクで 24 kHz より上は送受信できません。
+    <br>越えるには<strong>マイクとスピーカーが実際に 96 kHz 以上で動く機材</strong>が要ります。
+    iPhone / iPad の内蔵マイクは 48 kHz なので、内部レートを上げても何も入ってきません。
+    USB オーディオインターフェースなどを繋いだ場合だけ意味があります。
+    まず下の「サンプルレートを調べる」で<strong>マイクの実レート</strong>を確かめてください。
+    <br>ggwave はフレーム長を 1024 より長くできないので、内部レートを上げるとビン幅が
+    そのまま太くなります。96 kHz で<strong>占有幅 9000 Hz</strong>、192 kHz で<strong>18000 Hz</strong>に
+    膨らみ、1 フレームの時間が半分・4 分の 1 になるぶん弱くなります。変更すると<strong>マイクを再起動</strong>します。
   </div>
   <p class="lbl" style="margin:14px 0 7px">実効設定 — 要求ではなく実際に適用された値</p>
   <table id="diag"><tr><td>状態</td><td>マイク未開始</td></tr></table>
@@ -577,12 +597,18 @@
    でフレーム長を 1024 より長くできないので、内部レートを上げるとビンが太くなり
    占有幅もそのぶん広がる。48 kHz なら 46.875 Hz、96 kHz なら 93.75 Hz     */
 const FRAME = 1024;
+const RATES = [192000, 96000, 48000];      // 内部処理レートの候補。上から順に試す
 let RATE = 48000;
 let BINHZ = RATE / FRAME;
 function setRate(sr){ RATE = sr; BINHZ = sr / FRAME; }
+/* 内部レートは実際の入出力レートを超えられない。24 kHz より上を扱いたければ
+   ここを上げるしかないが、マイクとスピーカーが本当にその速さで動く機種でないと
+   何も入ってこない。要求より実測が低ければ黙って下の段に落とす          */
 function pickRate(){
   const want = store.get('tx.rate', 48000);
-  return (want >= 96000 && ctx && ctx.sampleRate >= 96000) ? 96000 : 48000;
+  if (!ctx) return 48000;
+  for (const r of RATES) if (want >= r && ctx.sampleRate >= r) return r;
+  return 48000;
 }
 const binsOf = key => key.indexOf('_MT_') >= 0 ? 16
                     : key.indexOf('_DT_') >= 0 ? 32
@@ -595,6 +621,13 @@ const fsMax = key => (FRAME/2) - binsOf(key || curProto());
 const hz = fs => Math.round(fs * BINHZ);
 const curProto = () => $('proto').value;
 const curBandw = () => bandwOf(curProto());
+/* 内部レートを変えると占有幅も変わる。上端をそのまま保てないときは、
+   下端に落とすのではなく上端に寄せる。レートを上げる目的は上に行くこと
+   なので、幅が広がったぶん下に押し出されるのは意図と逆になる        */
+function fsForTop(top){
+  const want = Math.round(((isFinite(top) ? top : 24000) - curBandw()) / BINHZ);
+  return want < fsMin() ? fsMax() : want;
+}
 
 // 帯域スキャンの 6 枠。ビン番号ではなく「上端の周波数」で定義する。
 // 内部レートを変えるとビンの意味が変わるので、周波数で持つほうが安全。
@@ -675,6 +708,7 @@ async function ensureCtx(){
     }
   }
   setRate(pickRate());
+  if (typeof fitToneRange === 'function') fitToneRange();
   silentKick();
   if (ctx.state !== 'running') await ctx.resume();
   return ctx;
@@ -726,8 +760,7 @@ function syncRate(){
   if (labelRate === RATE) return;
   const top = parseFloat($('fsHi').value);
   labelRate = RATE;
-  const fs = Math.max(fsMin(), Math.min(fsMax(),
-             Math.round((isFinite(top) ? top - curBandw() : 15000) / BINHZ)));
+  const fs = Math.max(fsMin(), Math.min(fsMax(), fsForTop(top)));
   $('fs').min = fsMin(); $('fs').max = fsMax();     // 値より先に枠を広げる
   $('fs').value = fs;
   $('fsLo').value = hz(fs);
@@ -839,7 +872,8 @@ function draw(){
 
   const nyq = ctx.sampleRate/2;
   const loHz = zoomed ? 8000 : 0;
-  const hiHz = zoomed ? Math.min(24000, nyq) : nyq;
+  // 拡大時は 24 kHz までだが、使用帯がそれより上にあるときは入るまで広げる
+  const hiHz = zoomed ? Math.min(nyq, Math.max(24000, bandTop() + 3000)) : nyq;
   const x = f => (f-loHz)/(hiHz-loHz)*W;
   const y = d => H - (Math.max(-100, Math.min(-10, d))+100)/90*H;
 
@@ -937,6 +971,16 @@ function chatProg(body){
   }
   p.textContent = body;
   el.scrollTop = el.scrollHeight;
+}
+
+/* トーン発生器の上限は AudioContext の実レートで決まる。24 kHz より上が
+   本当に出るのかを 1 点ずつ確かめる道具なので、目盛を実レートに合わせる */
+function fitToneRange(){
+  const nyq = ctx ? ctx.sampleRate/2 : 24000;
+  const mx = Math.max(23000, Math.floor((nyq - 250)/250)*250);
+  $('tone').max = mx;
+  if (+$('tone').value > mx){ $('tone').value = mx; $('toneVal').textContent = mx; }
+  $('toneCeil').textContent = mx;
 }
 
 function micUI(){
@@ -1416,7 +1460,7 @@ async function measureCeiling(){
   $('btnMeas').disabled = true;
   const nyq = ctx.sampleRate/2;
   const F0 = 15000, STEP = 250;
-  const F1 = Math.min(nyq - STEP, 40000);
+  const F1 = Math.min(nyq - STEP, 48000);
   const gn = ctx.createGain(); gn.gain.value = .3;
   const osc = ctx.createOscillator();
   osc.connect(gn); gn.connect(ctx.destination);
@@ -1636,11 +1680,19 @@ $('btnRate').onclick  = async () => {
     (mic ? (mic >= 96000 ? '<span class="ok">' : '<span class="warn">') + mic + ' Hz</span>'
          : '<span class="warn">未報告 — AudioContext の ' + (ctx ? ctx.sampleRate : '?') + ' Hz で受けています</span>') +
     '</td></tr>';
-  const best = list.find(r => r.ok);
+  const outBest = list.filter(r => r.ok).reduce((m,r) => Math.max(m, r.want), 0);
+  const usable = mic ? Math.min(mic, outBest) : 0;
   const verdict = `<tr><td>判定</td><td>` +
-    (best && best.want >= 96000 && mic && mic >= 96000
-      ? '<span class="ok">96 kHz が使えます。内部レートを上げられます</span>'
-      : '<span class="warn">24 kHz より上は無理です。48000 Hz のままにしてください</span>') + '</td></tr>';
+    (usable >= 96000
+      ? `<span class="ok">入出力ともに ${usable} Hz まで動きます。内部レートを上げれば上限は ` +
+        `${usable/2} Hz</span>`
+      : mic
+        ? `<span class="bad">マイクの実レートが ${mic} Hz なので、上限は ${mic/2} Hz が壁です。` +
+          `内部レートは 48000 Hz のままにしてください</span>`
+        : `<span class="warn">マイクが実レートを報告しません。AudioContext の ` +
+          `${ctx ? ctx.sampleRate : '?'} Hz で受けているので上限は ` +
+          `${ctx ? ctx.sampleRate/2 : '?'} Hz です。実際にどこまで拾えるかは「自機の上限を測る」で確かめてください</span>`) +
+    '</td></tr>';
   $('rateTbl').innerHTML = rows + micRow + verdict;
   $('btnRate').disabled = false;
 };
@@ -1661,7 +1713,7 @@ $('rate').onchange = async () => {
   }
   // 周波数を保つ。ビン番号は意味が変わっている
   labelRate = RATE;
-  applyFs((isFinite(keepTop) ? keepTop - curBandw() : 15000) / BINHZ);
+  applyFs(fsForTop(keepTop));
   renderScan(); showDiag();
   if (wasRunning) startMic();
 };
@@ -1714,6 +1766,7 @@ $('chatSend').onclick = async () => {
 // タップ入力の操作は 2 ページ目のものをそのまま押す。状態は 1 か所で持つ
 $('chatTap').onclick = () => $('mrListen').click();
 $('chatNow').onclick = () => $('mrNow').click();
+$('chatClear').onclick = () => $('mrClear').click();
 
 /* ---------- 起動時の復元 ----------
    使用帯とプロトコルは 2 台で揃えないと復号できない。リロードで既定に
@@ -1730,7 +1783,7 @@ $('chatNow').onclick = () => $('mrNow').click();
   countBytes();
 })();
 showPage(store.get('ui.page', 1));
-micUI(); renderScan(); sizeCanvas(); showDiag();
+micUI(); fitToneRange(); renderScan(); sizeCanvas(); showDiag();
 </script>
 <script>
 "use strict";
@@ -1827,32 +1880,36 @@ function setBeat(beat){ writeRanges(derive(clamp(beat, 0.15, 6))); onRangeChange
 
 const KCOL = { rep:'#6EE7A8', beat:'#F2A93B', chr:'#4FD1C5', end:'#FF6B6B' };
 function trackSpan(r){ return (r || ranges()).end + 0.5; }
+// 同じ表示が 2 ページにある。ある側だけまとめて書く
+const dual = id => [$(id), $(id+'1')].filter(Boolean);
 function renderTrack(r){
   r = r || ranges();
   const total = trackSpan(r);
-  const el = $('mrTrack');
-  el.querySelectorAll('.z,.zt').forEach(n => n.remove());
   const zones = [
     ['rep',  0,      r.rep, '長'],
     ['beat', r.rep,  r.chr, '1拍'],
     ['chr',  r.chr,  r.end, '字'],
     ['end',  r.end,  total, '送信']
   ];
-  for (const [k,a,b,label] of zones){
-    const z = document.createElement('div');
-    z.className = 'z';
-    z.style.left = (a/total*100) + '%';
-    z.style.width = ((b-a)/total*100) + '%';
-    z.style.background = KCOL[k];
-    z.style.opacity = .30;
-    el.appendChild(z);
-    const t = document.createElement('div');
-    t.className = 'zt';
-    t.style.left = ((a+b)/2/total*100) + '%';
-    t.textContent = label;
-    el.appendChild(t);
-  }
-  $('mrScale').innerHTML = '<span>0 s</span><span>' + (total/2).toFixed(2) + '</span><span>' + total.toFixed(2) + ' s</span>';
+  dual('mrTrack').forEach(el => {
+    el.querySelectorAll('.z,.zt').forEach(n => n.remove());
+    for (const [k,a,b,label] of zones){
+      const z = document.createElement('div');
+      z.className = 'z';
+      z.style.left = (a/total*100) + '%';
+      z.style.width = ((b-a)/total*100) + '%';
+      z.style.background = KCOL[k];
+      z.style.opacity = .30;
+      el.appendChild(z);
+      const t = document.createElement('div');
+      t.className = 'zt';
+      t.style.left = ((a+b)/2/total*100) + '%';
+      t.textContent = label;
+      el.appendChild(t);
+    }
+  });
+  const html = '<span>0 s</span><span>' + (total/2).toFixed(2) + '</span><span>' + total.toFixed(2) + ' s</span>';
+  dual('mrScale').forEach(el => { el.innerHTML = html; });
 }
 
 /* ============================================================
@@ -1875,12 +1932,13 @@ function mrLog(msg, cls){
   while (el.childElementCount > 200) el.removeChild(el.firstChild);
 }
 function updState(){
-  const s = $('mrState');
-  if (!running) s.textContent = 'マイク未開始';
-  else if (mode === 'off')   s.textContent = '停止中';
-  else if (mode === 'arm')   s.textContent = '待機中 — 叩けば始まります';
-  else if (mode === 'input') s.textContent = group ? ('入力中 — ' + group + ' 打') : '入力中';
-  else if (mode === 'calib') s.textContent = '1 拍を実測中';
+  let t;
+  if (!running) t = 'マイク未開始';
+  else if (mode === 'off')   t = '停止中';
+  else if (mode === 'arm')   t = '待機中 — 叩けば始まります';
+  else if (mode === 'input') t = group ? ('入力中 — ' + group + ' 打') : '入力中';
+  else if (mode === 'calib') t = '1 拍を実測中';
+  dual('mrState').forEach(e => { e.textContent = t; });
   const on = (mode === 'input' || mode === 'arm');
   $('mrListen').textContent = on ? 'タップ入力を停止' : 'タップ入力を開始';
   $('mrListen').className   = on ? '' : 'primary';
@@ -1953,7 +2011,7 @@ function tapDetach(){
   tapAnalyser = null;
   if (rafId){ cancelAnimationFrame(rafId); rafId = null; }
   mode = 'off';
-  $('mrLevel').style.width = '0%';
+  dual('mrLevel').forEach(e => { e.style.width = '0%'; });
   updState();
 }
 window.tapAttach = tapAttach;
@@ -2151,13 +2209,17 @@ function tick(){
   const total = trackSpan(r);
   const counting = (mode === 'input' || mode === 'calib') && lastTapMs;
   const el = counting ? (performance.now() - lastTapMs)/1000 : 0;
-  $('mrCursor').style.left = clamp(el/total*100, 0, 100) + '%';
-  $('mrCursor').style.background = el >= r.end ? 'var(--hot)' : 'var(--ink)';
-  $('mrGap').textContent = el.toFixed(2) + ' s';
-  $('mrCount').textContent = (counting && mode === 'input')
+  const bg = el >= r.end ? 'var(--hot)' : 'var(--ink)';
+  const left = clamp(el/total*100, 0, 100) + '%';
+  dual('mrCursor').forEach(c => { c.style.left = left; c.style.background = bg; });
+  const gap = el.toFixed(2) + ' s';
+  dual('mrGap').forEach(e => { e.textContent = gap; });
+  const cnt = (counting && mode === 'input')
     ? '送信まで ' + Math.max(0, r.end - el).toFixed(1) + ' 秒'
     : '送信まで —';
-  $('mrLevel').style.width = clamp((lastDb + 80)/70*100, 0, 100) + '%';
+  dual('mrCount').forEach(e => { e.textContent = cnt; });
+  const lvl = clamp((lastDb + 80)/70*100, 0, 100) + '%';
+  dual('mrLevel').forEach(e => { e.style.width = lvl; });
   if ((tickN++ % 20) === 0){
     $('mrLvl').textContent = running
       ? '暗騒音 ' + noiseDb.toFixed(1) + ' dB / 直近 ' + lastDb.toFixed(1) + ' dB'
