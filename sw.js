@@ -8,6 +8,12 @@
 self.addEventListener('install',  e => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
+/* fetch ハンドラは「存在するだけ」。respondWith を呼ばないので、
+   通信はブラウザがそのまま処理する = キャッシュは一切されない。
+   Android の Chrome はインストール可否の判定で fetch ハンドラの有無を見る
+   ことがあるので、ホーム画面追加のバナーを出すためだけに置いてある。 */
+self.addEventListener('fetch', () => {});
+
 // 通知をタップしたら、開いているタブに戻す。無ければ開く
 self.addEventListener('notificationclick', e => {
   e.notification.close();

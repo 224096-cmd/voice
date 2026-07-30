@@ -8,7 +8,52 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Morse">
-<title>超音波通信テスト / ggwave</title>
+<meta name="color-scheme" content="dark">
+
+<title>超音波データ通信 実機テスト / ggwave — スピーカーとマイクだけでデータを送る</title>
+<meta name="description" content="スピーカーから音を出し、相手のマイクで拾って、その音の中に埋め込んだデータを取り出します。電波もネットも使いません。ggwave を使った、ブラウザだけで動く超音波通信の実験ツールです。">
+<link rel="canonical" href="https://224096-cmd.github.io/voice/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+
+<!-- ホーム画面に追加したときのアイコンと PWA 設定 -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" href="icon.svg" type="image/svg+xml" sizes="any">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+<!-- SNS や検索結果に出るカード -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="超音波データ通信">
+<meta property="og:locale" content="ja_JP">
+<meta property="og:url" content="https://224096-cmd.github.io/voice/">
+<meta property="og:title" content="超音波データ通信 実機テスト">
+<meta property="og:description" content="スピーカーから音を出し、相手のマイクで拾って、その音の中に埋め込んだデータを取り出します。電波もネットも使いません。">
+<meta property="og:image" content="https://224096-cmd.github.io/voice/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+
+<!-- Google Search Console の所有権確認を「HTML タグ」方式で行う場合は、
+     下の行のコメントを外して content の中身を貼り替える -->
+<!-- <meta name="google-site-verification" content="ここに Search Console が出したコードを貼る"> -->
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "超音波データ通信 実機テスト",
+  "url": "https://224096-cmd.github.io/voice/",
+  "image": "https://224096-cmd.github.io/voice/og-image.png",
+  "description": "スピーカーから音を出し、相手のマイクで拾って、その音の中に埋め込んだデータを取り出します。電波もネットも使いません。",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "iOS, Android, Windows, macOS のウェブブラウザ",
+  "browserRequirements": "Web Audio API とマイク入力に対応したブラウザ",
+  "inLanguage": "ja",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "JPY" },
+  "author": { "@type": "Person", "name": "224096-cmd" }
+}
+</script>
 <style>
   :root{
     --bg:#0B1017; --panel:#131B26; --panel2:#0F1620; --line:#22303F;
