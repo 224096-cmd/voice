@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0B1017">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Morse">
 <title>超音波通信テスト / ggwave</title>
@@ -129,7 +130,7 @@
 <body>
 
 <h1>超音波データ通信 実機テスト</h1>
-<p class="sub">ggwave 0.4.3 · 周波数帯可変 · 帯域スキャン · タップ入力モールス</p>
+<p class="sub">ggwave 0.4.3 · 周波数帯可変 · 帯域スキャン · タップ入力モールス · rev.2</p>
 <a class="jump" href="#morse">↓ モールス入力へ</a>
 
 <section>
@@ -150,7 +151,10 @@
 
 <section>
   <p class="lbl">送信 — 手動</p>
-  <div class="field"><input type="text" id="txText" value="hello" maxlength="140"></div>
+  <div class="field">
+    <input type="text" id="txText" value="hello" maxlength="140">
+    <p class="lbl" id="txBytes" style="margin:6px 0 0">—</p>
+  </div>
   <div class="field">
     <select id="proto">
       <option value="GGWAVE_PROTOCOL_ULTRASOUND_NORMAL" selected>Normal — 最も堅牢(実測 30/30)</option>
@@ -162,9 +166,9 @@
   <div class="field">
     <p class="lbl" style="margin-bottom:6px">使用帯 — 数字を直接入力できます(下限・上限どちらからでも)</p>
     <div class="fsrow">
-      <input type="number" id="fsLo" inputmode="numeric" value="15000">
+      <input type="number" id="fsLo" inputmode="numeric" min="7500" max="19500" step="47" value="15000">
       <span class="dash">–</span>
-      <input type="number" id="fsHi" inputmode="numeric" value="19500">
+      <input type="number" id="fsHi" inputmode="numeric" min="9000" max="24000" step="47" value="19500">
       <span class="unit">Hz</span>
     </div>
     <input type="range" id="fs" min="160" max="416" step="1" value="320">
@@ -177,7 +181,8 @@
     </div>
     <p class="lbl" style="margin:9px 0 0">
       実際の割り当て <span class="val" id="fsVal">15000 – 19500</span> Hz
-      <span style="color:var(--dim)">/ 幅 4500 Hz / freqStart <span id="fsRaw">320</span></span>
+      <span style="color:var(--dim)">/ 幅 <span id="fsBw">4500</span> Hz(<span id="fsBins">96</span> ビン)
+      / freqStart <span id="fsRaw">320</span></span>
     </p>
   </div>
   <div class="field">
@@ -190,6 +195,8 @@
   <div class="warnbox">
     手動送信では <strong>2 台で同じプロトコルと同じ使用帯</strong>にしないと復号できません。
     スキャンを実行すると帯域割り当てが切り替わるので、手動に戻すときはこのスライダーを両方で合わせ直してください。
+    <br>占有幅はプロトコルが決めます。Normal / Fast / Fastest は <strong>4500 Hz</strong>、
+    Dual-tone は 3 分の 1 の <strong>1500 Hz</strong> です。狭いぶん上のほうまで寄せられます。
   </div>
 </section>
 
@@ -439,8 +446,29 @@
      ・AUDIBLE 系と ULTRASOUND 系は構造が同じで、freqStart を動かせば
        どちらも同じ帯域を扱える。これを使って 6 段の梯子を組んでいる
    ============================================================ */
-const BINHZ = 46.875, BANDW = 4500;
+
+/* 占有幅は ggwave 側の bytesPerTx と extra で決まる固定値で、こちらから
+   広くも狭くもできない。1 バイトを上位・下位ニブルに割り、各ニブルを
+   16 音のどれかで表すので
+
+     extra=1 : 2*bytesPerTx 枠 × 16 音 ビン
+     extra=2 : 1*bytesPerTx 枠 × 16 音 ビン(モノトーン)
+
+   AUDIBLE / ULTRASOUND は bytesPerTx=3 extra=1 → 96 ビン = 4500 Hz
+   DT 系は bytesPerTx=1 extra=1 →  32 ビン = 1500 Hz
+   MT 系は bytesPerTx=1 extra=2 →  16 ビン =  750 Hz            */
+const BINHZ = 46.875;                                  // 48000 / 1024
+const binsOf = key => key.indexOf('_MT_') >= 0 ? 16
+                    : key.indexOf('_DT_') >= 0 ? 32
+                    : 96;
+const bandwOf = key => binsOf(key) * BINHZ;            // 4500 / 1500 / 750
+const NYQ_NEEDED = 512 * BINHZ;                        // 24000。1024 点 FFT で使えるビンの端
+const FS_MIN = 160;
+// 上端がナイキストに収まる freqStart の上限。幅が狭いプロトコルほど上げられる
+const fsMax = () => 512 - binsOf(curProto());
 const hz = fs => Math.round(fs * BINHZ);
+const curProto = () => $('proto').value;
+const curBandw = () => bandwOf(curProto());
 
 // 帯域スキャンの 6 枠。上限が約 1 kHz ずつ上がる階段になっている。
 // 高い帯域ほど堅牢な変種を割り当ててあるので、上段が落ちたときに
@@ -462,6 +490,12 @@ let freqData=null, peakHold=null, rxCount=0, sessionType='(未設定)';
 const scanResult = {};
 const $ = id => document.getElementById(id);
 
+/* 設定の保存。localStorage が使えない環境でも落ちないようにする */
+const store = {
+  get(k,d){ try{ const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+
 function reinterpret(src, Type){
   const b = new ArrayBuffer(src.byteLength);
   new src.constructor(b).set(src);
@@ -474,11 +508,22 @@ function setSession(type){
   catch(e){}
 }
 let kicker=null;
+/* 8 bit / 8 kHz / モノラルの無音を 1 秒ぶん。8 bit 符号なしの無音は 0x80 で、
+   0x00 は全振幅のマイナス側なので、'A' 埋め(= 0x00)ではループごとに
+   ポップノイズが出る。base64 は 4 の倍数長にし、data チャンクの宣言長と
+   実データ長も合わせる                                                */
+const SILENT_WAV = 'data:audio/wav;base64,' +
+  'UklGRmMfAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YT8fAACA' + 'gICA'.repeat(2666);
 function silentKick(){
   if (kicker || navigator.audioSession) return;
-  kicker = new Audio('data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAAC'+'A'.repeat(400));
+  kicker = new Audio(SILENT_WAV);
   kicker.loop = true; kicker.volume = 0.01;
   kicker.play().catch(()=>{ kicker=null; });
+}
+function silentKickStop(){
+  if (!kicker) return;
+  try{ kicker.pause(); kicker.src = ''; }catch(e){}
+  kicker = null;
 }
 async function ensureCtx(){
   if (!ctx){
@@ -493,6 +538,7 @@ async function ensureCtx(){
 function log(msg, cls){
   const el = $('rx'), t = new Date().toTimeString().slice(0,8);
   el.insertAdjacentHTML('beforeend', `<div><span class="t">${t}</span> <span class="${cls||'m'}">${msg}</span></div>`);
+  while (el.childElementCount > 300) el.removeChild(el.firstChild);   // 放置で伸び続けるのを防ぐ
   el.scrollTop = el.scrollHeight;
 }
 
@@ -501,38 +547,69 @@ function log(msg, cls){
    freqStart は init 前に確定させる必要があるため、帯域を変える
    たびにこの関数で作り直す
    ============================================================ */
-async function rebuild(newMode){
+// ggwave の既定では 12 プロトコル全部が有効になっている。MT / DT は
+// freqStart 24 = 約 1.1 kHz、AUDIBLE も 40 = 約 1.9 kHz なので、放って
+// おくと会話や物音の帯域を常時待ち受けることになる。誤復号と CPU の
+// 無駄なので、使うものだけを毎回明示的に有効化する
+const ALL_PROTO = [
+  'GGWAVE_PROTOCOL_AUDIBLE_NORMAL','GGWAVE_PROTOCOL_AUDIBLE_FAST','GGWAVE_PROTOCOL_AUDIBLE_FASTEST',
+  'GGWAVE_PROTOCOL_ULTRASOUND_NORMAL','GGWAVE_PROTOCOL_ULTRASOUND_FAST','GGWAVE_PROTOCOL_ULTRASOUND_FASTEST',
+  'GGWAVE_PROTOCOL_DT_NORMAL','GGWAVE_PROTOCOL_DT_FAST','GGWAVE_PROTOCOL_DT_FASTEST',
+  'GGWAVE_PROTOCOL_MT_NORMAL','GGWAVE_PROTOCOL_MT_FAST','GGWAVE_PROTOCOL_MT_FASTEST'
+];
+
+let builtKey = null;
+function configKey(){
+  return mode === 'scan' ? 'scan' : 'manual:' + curProto() + ':' + $('fs').value + ':' + (ctx ? ctx.sampleRate : 0);
+}
+
+async function rebuild(newMode, force){
   await ensureCtx();
-  if (!ggwave) ggwave = await ggwave_factory();
+  if (!ggwave){
+    ggwave = await ggwave_factory();
+    if (ggwave.disableLog) ggwave.disableLog();   // ggwave 自身の stderr 出力を止める
+  }
   if (newMode) mode = newMode;
+
+  // 設定が前回と同じなら作り直さない。モールスの連続送信で毎回
+  // free → init を回すのは無駄で、その間に取りこぼしも起きる
+  const key = configKey();
+  if (!force && instance !== null && key === builtKey) return instance;
 
   if (instance !== null){ try { ggwave.free(instance); } catch(e){} instance = null; }
 
   const P = ggwave.ProtocolId;
+  const on = (k, tx, rx, fs) => {
+    if (P[k] === undefined) return;
+    ggwave.txProtocolSetFreqStart(P[k], fs);
+    ggwave.rxProtocolSetFreqStart(P[k], fs);
+    ggwave.txToggleProtocol(P[k], tx ? 1 : 0);
+    ggwave.rxToggleProtocol(P[k], rx ? 1 : 0);
+  };
+  ALL_PROTO.forEach(k => {
+    if (P[k] === undefined) return;
+    ggwave.txToggleProtocol(P[k], 0);
+    ggwave.rxToggleProtocol(P[k], 0);
+  });
+
   if (mode === 'scan'){
-    SLOTS.forEach(s => {
-      ggwave.txToggleProtocol(P[s.key], 1);
-      ggwave.rxToggleProtocol(P[s.key], 1);
-      ggwave.txProtocolSetFreqStart(P[s.key], s.fs);
-      ggwave.rxProtocolSetFreqStart(P[s.key], s.fs);
-    });
+    SLOTS.forEach(s => on(s.key, true, true, s.fs));
   } else {
+    // 受信は 6 帯域の梯子を常に開けておく。相手がスキャンを流したとき、
+    // こちらは何も操作しなくても受かる。これが「受信側は待つだけ」の根拠
+    SLOTS.forEach(s => on(s.key, false, true, s.fs));
+    // 送信に使う 1 つだけスライダーの値にする(梯子と同じものを選んだ
+    // ときは、その 1 段は梯子の位置から外れる)
     const fs = parseInt($('fs').value, 10);
-    const sel = $('proto').value;
-    // 選択中のプロトコルだけスライダー値にし、残りは梯子の既定値へ戻す
-    SLOTS.forEach(s => ggwave.txProtocolSetFreqStart(P[s.key], s.fs));
-    SLOTS.forEach(s => ggwave.rxProtocolSetFreqStart(P[s.key], s.fs));
-    ggwave.txToggleProtocol(P[sel], 1);
-    ggwave.rxToggleProtocol(P[sel], 1);
-    ggwave.txProtocolSetFreqStart(P[sel], fs);
-    ggwave.rxProtocolSetFreqStart(P[sel], fs);
+    on(curProto(), true, true, fs);
   }
 
   const p = ggwave.getDefaultParameters();
   p.sampleRateInp = ctx.sampleRate;
   p.sampleRateOut = ctx.sampleRate;
   instance = ggwave.init(p);
-  if (instance < 0) throw new Error('ggwave.init に失敗');
+  if (instance < 0){ builtKey = null; throw new Error('ggwave.init に失敗'); }
+  builtKey = key;
   return instance;
 }
 
@@ -548,10 +625,16 @@ function sizeCanvas(){
 }
 addEventListener('resize', sizeCanvas);
 
+// いま実際に使う帯域の上端。ナイキストを超えていないかの判定に使う
+function bandTop(){
+  const b = activeBands();
+  return b.reduce((m, x) => Math.max(m, x[1]), 0);
+}
+
 function activeBands(){
-  if (mode === 'scan') return SLOTS.map(s => [hz(s.fs), hz(s.fs)+BANDW]);
+  if (mode === 'scan') return SLOTS.map(s => [hz(s.fs), hz(s.fs)+bandwOf(s.key)]);
   const fs = parseInt($('fs').value,10);
-  return [[hz(fs), hz(fs)+BANDW]];
+  return [[hz(fs), hz(fs)+curBandw()]];
 }
 
 function draw(){
@@ -585,13 +668,16 @@ function draw(){
   }
 
   const bins = freqData.length;
+  // 保持は全域で更新する。表示範囲だけだと拡大中に 8 kHz 以下が空になり、
+  // 全帯域に切り替えたとき下half が平坦に見えてしまう
+  for (let i=0;i<bins;i++) if (freqData[i] > peakHold[i]) peakHold[i] = freqData[i];
+
   const i0 = Math.max(0, Math.floor(loHz/nyq*bins));
   const i1 = Math.min(bins-1, Math.ceil(hiHz/nyq*bins));
   g.strokeStyle = '#4FD1C5'; g.lineWidth = 1.2; g.beginPath();
   for (let i=i0;i<=i1;i++){
     const px = x(i/bins*nyq), py = y(freqData[i]);
     i===i0 ? g.moveTo(px,py) : g.lineTo(px,py);
-    if (freqData[i] > peakHold[i]) peakHold[i] = freqData[i];
   }
   g.stroke();
 
@@ -668,11 +754,14 @@ async function startMic(){
 function stopMic(){
   running = false;
   if (typeof tapDetach === 'function') tapDetach();
+  stopTone();
+  txBusy = false;
   if (processor){ processor.disconnect(); processor.onaudioprocess = null; }
   if (micSource) micSource.disconnect();
   if (sinkGain) sinkGain.disconnect();
+  if (analyser) analyser.disconnect();
   if (stream) stream.getTracks().forEach(t => t.stop());
-  stream = micSource = processor = sinkGain = null;
+  stream = micSource = processor = sinkGain = analyser = null;
   $('btnMic').textContent = 'マイクを開始';
   log('マイク停止', 't');
   showDiag();
@@ -690,7 +779,7 @@ function onDecoded(text){
     if (SLOTS[i]){
       scanResult[i] = true;
       renderScan();
-      log(`受信 [帯域 ${hz(SLOTS[i].fs)}–${hz(SLOTS[i].fs)+BANDW} Hz] ${text}`);
+      log(`受信 [帯域 ${hz(SLOTS[i].fs)}–${hz(SLOTS[i].fs)+bandwOf(SLOTS[i].key)} Hz] ${text}`);
       if (navigator.vibrate) navigator.vibrate(40);
       return;
     }
@@ -708,7 +797,19 @@ async function playWaveform(pcm){
   const src = ctx.createBufferSource();
   src.buffer = buf; src.connect(ctx.destination);
   txBusy = true; src.start();
-  return new Promise(res => { src.onended = () => { txBusy = false; res(); }; });
+  // バックグラウンドに回されると onended が来ないことがある。来なければ
+  // 長さ + 余裕で必ず抜ける。ここで詰まると復号もタップ検出も止まる
+  return new Promise(res => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true; txBusy = false;
+      try{ src.disconnect(); }catch(e){}
+      res();
+    };
+    src.onended = finish;
+    setTimeout(finish, (pcm.length / ctx.sampleRate) * 1000 + 800);
+  });
 }
 
 async function transmit(text, protoKey){
@@ -718,20 +819,42 @@ async function transmit(text, protoKey){
   return pcm.length / ctx.sampleRate;
 }
 
+/* ---------- 送信できる長さ ----------
+   ggwave の可変長ペイロードは 140 バイト。超えた分は ggwave 側で黙って
+   切り捨てられるので、送る前にこちらで止める。maxlength は文字数なので
+   日本語だと 1 文字 3 バイトで簡単に超える                       */
+const TX_MAX_BYTES = 140;
+const byteLen = s => new TextEncoder().encode(s).length;
+function countBytes(){
+  const n = byteLen($('txText').value);
+  const el = $('txBytes');
+  el.innerHTML = n > TX_MAX_BYTES
+    ? `<span class="bad">${n} / ${TX_MAX_BYTES} バイト — 長すぎます</span>`
+    : `<span style="color:var(--dim)">${n} / ${TX_MAX_BYTES} バイト</span>`;
+  return n;
+}
+
 /* ---------- 手動送信 ---------- */
 async function send(){
   const text = $('txText').value;
   if (!text || scanning) return;
+  const bytes = countBytes();
+  if (bytes > TX_MAX_BYTES){
+    log(`送信中止 — ${bytes} バイトは上限 ${TX_MAX_BYTES} を超えています`, 'bad');
+    return false;
+  }
   try{
     setSession(running ? 'play-and-record' : 'playback');
     await rebuild('manual');
     $('btnSend').disabled = true;
     const fs = parseInt($('fs').value,10);
-    log(`送信 "${text}" @ ${hz(fs)}–${hz(fs)+BANDW} Hz`, 't');
-    const sec = await transmit(text, $('proto').value);
+    log(`送信 "${text}" @ ${hz(fs)}–${hz(fs)+curBandw()} Hz / ${bytes} バイト`, 't');
+    const sec = await transmit(text, curProto());
     log(`送信完了 ${sec.toFixed(1)} 秒`, 't');
+    return true;
   }catch(err){
     log('送信エラー: '+err.message, 'bad');
+    return false;
   }finally{
     txBusy = false; $('btnSend').disabled = false;
   }
@@ -743,7 +866,7 @@ function renderScan(){
     const st = scanResult[i] === true ? '<span class="ok">届いた</span>'
              : scanResult[i] === 'sent' ? '<span class="warn">送信済</span>'
              : '<span style="color:var(--dim)">—</span>';
-    return `<tr><td>#${i} ${s.v}</td><td>${hz(s.fs)} – ${hz(s.fs)+BANDW} Hz</td><td>${st}</td></tr>`;
+    return `<tr><td>#${i} ${s.v}</td><td>${hz(s.fs)} – ${hz(s.fs)+bandwOf(s.key)} Hz</td><td>${st}</td></tr>`;
   }).join('');
 }
 
@@ -775,6 +898,10 @@ async function runScan(){
 }
 
 /* ---------- スイープと単一トーン ---------- */
+// 自分で出した音をモールスの打鍵と取り違えないよう、鳴らしている間は
+// タップ検出を止める。トーンは 8 kHz まで下げられて検出帯と重なる
+function holdTap(ms){ if (typeof tapHold === 'function') tapHold(ms); }
+
 async function sweep(){
   setSession(running ? 'play-and-record' : 'playback');
   await ensureCtx();
@@ -788,19 +915,33 @@ async function sweep(){
   gn.gain.linearRampToValueAtTime(0, t0+DUR);
   osc.connect(gn); gn.connect(ctx.destination);
   osc.start(t0); osc.stop(t0+DUR);
+  osc.onended = () => { try{ osc.disconnect(); gn.disconnect(); }catch(e){} };
+  holdTap(DUR*1000 + 600);
   log('スイープ 10 → 23 kHz / 7 秒', 't');
 }
 
-let toneOsc = null;
+let toneOsc = null, toneGain = null, toneHold = null;
+function stopTone(){
+  if (!toneOsc) return;
+  try{ toneOsc.stop(); toneOsc.disconnect(); }catch(e){}
+  try{ toneGain.disconnect(); }catch(e){}
+  toneOsc = toneGain = null;
+  clearInterval(toneHold); toneHold = null;
+  $('btnTone').textContent = '単一トーンを鳴らす';
+  holdTap(600);
+}
 async function toggleTone(){
   await ensureCtx();
-  if (toneOsc){ toneOsc.stop(); toneOsc = null; $('btnTone').textContent = '単一トーンを鳴らす'; return; }
+  if (toneOsc){ stopTone(); return; }
   setSession(running ? 'play-and-record' : 'playback');
-  const gn = ctx.createGain(); gn.gain.value = .3;
+  toneGain = ctx.createGain(); toneGain.gain.value = .3;
   toneOsc = ctx.createOscillator();
   toneOsc.frequency.value = parseInt($('tone').value,10);
-  toneOsc.connect(gn); gn.connect(ctx.destination);
+  toneOsc.connect(toneGain); toneGain.connect(ctx.destination);
   toneOsc.start();
+  // 鳴っている間ずっと検出を止めておく
+  holdTap(1200);
+  toneHold = setInterval(() => holdTap(1200), 800);
   $('btnTone').textContent = 'トーンを止める';
   log($('tone').value + ' Hz を連続再生', 't');
 }
@@ -827,7 +968,10 @@ function showDiag(err){
   if (ctx){
     rows.push(['AudioContext state', (ctx.state==='running'?'<span class="ok">':'<span class="bad">')+ctx.state+'</span>']);
     rows.push(['sampleRate', (ctx.sampleRate>=44100?'<span class="ok">':'<span class="bad">')+ctx.sampleRate+' Hz</span>']);
-    rows.push(['ナイキスト周波数', (ctx.sampleRate/2 > hz(416)+BANDW ? '<span class="ok">':'<span class="warn">')+(ctx.sampleRate/2)+' Hz</span>']);
+    // 48 kHz だとナイキストは 24000 でちょうど一致する。> ではなく >= で判定する
+    const top = bandTop();
+    rows.push(['ナイキスト周波数', (ctx.sampleRate/2 >= NYQ_NEEDED ? '<span class="ok">':'<span class="warn">')+(ctx.sampleRate/2)+' Hz</span>']);
+    rows.push(['いま使う帯域の上端', (ctx.sampleRate/2 >= top ? '<span class="ok">':'<span class="bad">')+top+' Hz</span>']);
   }
   if (stream){
     const s = stream.getAudioTracks()[0].getSettings();
@@ -836,7 +980,11 @@ function showDiag(err){
     rows.push(['autoGainControl', flag(s.autoGainControl)]);
     rows.push(['チャンネル数', (s.channelCount||'未報告')+'']);
   } else if (!err) rows.push(['マイク','未開始']);
-  rows.push(['動作モード', mode === 'scan' ? 'スキャン (6帯域待受)' : '手動 (単一帯域)']);
+  rows.push(['動作モード', mode === 'scan' ? 'スキャン送信 (6帯域)' : '手動送信 (1帯域) + 6帯域を待受']);
+  if (mode !== 'scan'){
+    rows.push(['送信プロトコル', curProto().replace('GGWAVE_PROTOCOL_','')]);
+    rows.push(['占有幅', curBandw()+' Hz ('+binsOf(curProto())+' ビン)']);
+  }
   if (instance !== null) rows.push(['ggwave','<span class="ok">初期化済み</span>']);
   if (err) rows.push(['直近のエラー','<span class="bad">'+err.message+'</span>']);
   rows.push(['User-Agent', navigator.userAgent]);
@@ -848,8 +996,15 @@ function showDiag(err){
    ============================================================ */
 function updateFsLabel(){
   const fs = parseInt($('fs').value,10);
-  $('fsVal').textContent = hz(fs) + ' – ' + (hz(fs)+BANDW);
+  const bw = curBandw(), mx = fsMax();
+  $('fsVal').textContent = hz(fs) + ' – ' + (hz(fs)+bw);
   $('fsRaw').textContent = fs;
+  $('fsBw').textContent = bw;
+  $('fsBins').textContent = binsOf(curProto());
+  // 幅が変わると入れられる範囲も変わる。入力欄と目盛を合わせておく
+  $('fs').max = mx;
+  $('fsLo').min = hz(FS_MIN);      $('fsLo').max = hz(mx);
+  $('fsHi').min = hz(FS_MIN) + bw; $('fsHi').max = hz(mx) + bw;
 }
 
 // 入力は Hz、内部は FFT ビン番号。1 ビン = 46.875 Hz なので必ず丸めが入る
@@ -857,14 +1012,18 @@ let fsTimer = null;
 function scheduleRebuild(){
   clearTimeout(fsTimer);
   fsTimer = setTimeout(() => {
+    // スキャン送信の途中で作り直すと、送信に使っている instance を
+    // 足元から抜くことになる。終わるまで待つ
+    if (scanning){ scheduleRebuild(); return; }
+    store.set('tx.fs', parseInt($('fs').value,10));   // 保存もここまで待つ
     if (ggwave) rebuild('manual').then(showDiag).catch(e => log('再初期化に失敗: '+e.message,'bad'));
   }, 250);
 }
 function applyFs(fs, keep){
-  fs = Math.max(160, Math.min(416, Math.round(fs)));
+  fs = Math.max(FS_MIN, Math.min(fsMax(), Math.round(fs)));
   $('fs').value = fs;
   if (keep !== 'lo') $('fsLo').value = hz(fs);
-  if (keep !== 'hi') $('fsHi').value = hz(fs) + BANDW;
+  if (keep !== 'hi') $('fsHi').value = hz(fs) + curBandw();
   updateFsLabel();
   scheduleRebuild();
 }
@@ -879,13 +1038,21 @@ $('fsLo').onchange = e => {
 $('fsHi').onchange = e => {
   const v = parseFloat(e.target.value);
   if (isNaN(v)) { applyFs(parseInt($('fs').value,10)); return; }
-  applyFs((v - BANDW) / BINHZ);
+  applyFs((v - curBandw()) / BINHZ);
 };
 document.querySelectorAll('.presets button').forEach(b => {
-  b.onclick = () => applyFs((parseInt(b.dataset.hi,10) - BANDW) / BINHZ);
+  b.onclick = () => applyFs((parseInt(b.dataset.hi,10) - curBandw()) / BINHZ);
 });
-$('proto').onchange = () => { if (ggwave) rebuild('manual').then(showDiag).catch(()=>{}); };
-$('vol').oninput  = e => $('volVal').textContent = e.target.value;
+// プロトコルによって占有幅が変わる(DT は 1500 Hz)。帯域はハードの上限で
+// 選ぶものなので、下端ではなく上端を保ったまま引き直す。この時点の fsHi は
+// まだ切り替え前の上端を持っている
+$('proto').onchange = () => {
+  store.set('tx.proto', curProto());
+  const hi = parseFloat($('fsHi').value);
+  applyFs(isFinite(hi) ? (hi - curBandw()) / BINHZ : parseInt($('fs').value,10));
+  countBytes();
+};
+$('vol').oninput  = e => { $('volVal').textContent = e.target.value; store.set('tx.vol', +e.target.value); };
 $('tone').oninput = e => {
   $('toneVal').textContent = e.target.value;
   if (toneOsc) toneOsc.frequency.value = parseInt(e.target.value,10);
@@ -909,7 +1076,21 @@ $('btnPeak').onclick = () => {
   $('btnPeak').textContent = peakOn ? 'ピーク保持を消す' : 'ピーク保持を再開';
 };
 
-applyFs(320); renderScan(); sizeCanvas(); showDiag();
+$('txText').oninput = countBytes;
+
+/* ---------- 起動時の復元 ----------
+   使用帯とプロトコルは 2 台で揃えないと復号できない。リロードで既定に
+   戻ると片方だけずれるので、前回の値を持ち越す                    */
+(function initTx(){
+  const p = store.get('tx.proto', null);
+  if (p && $('proto').querySelector('option[value="'+p+'"]')) $('proto').value = p;
+  const fs = store.get('tx.fs', null);
+  applyFs(fs == null ? 320 : fs);
+  const v = store.get('tx.vol', null);
+  if (v != null){ $('vol').value = v; $('volVal').textContent = v; }
+  countBytes();
+})();
+renderScan(); sizeCanvas(); showDiag();
 </script>
 <script>
 "use strict";
@@ -926,10 +1107,6 @@ applyFs(320); renderScan(); sizeCanvas(); showDiag();
 const $ = id => document.getElementById(id);
 const clamp = (v,a,b) => v < a ? a : (v > b ? b : v);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const store = {
-  get(k,d){ try{ const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } },
-  set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
-};
 const REF_MS  = 80;      // 不応時間。機械的な二度打ちを無視する
 const TX_HOLD = 600;     // 送信・再生が終わってから検出を戻すまで
 const TAP_LO  = 150;     // 検出に使う帯域。超音波(15 kHz 以上)は見ない
@@ -1230,7 +1407,8 @@ async function doSend(list, body){
   try{
     $('txText').value = TX_PREFIX + list.join('/');
     mrLog('超音波で送信 「' + body + '」 …', 's');
-    await send();
+    const ok = await send();
+    if (ok === false) mrLog('送れませんでした。長すぎる場合は「今すぐ送信」で区切ってください', 's');
   }catch(e){
     mrLog('送信エラー: ' + e.message, 's');
   }finally{
@@ -1288,6 +1466,7 @@ function guard(ms){
   holdUntil = Math.max(holdUntil, performance.now() + ms);
   prevDb = -120;
 }
+window.tapHold = guard;   // スイープや単一トーンの再生中に外から止める
 // どのボタンでも押した直後は検出を止める。data-hold があればその長さで
 document.addEventListener('click', e => {
   const t = e.target;
@@ -1341,17 +1520,39 @@ function morseRx(txt){
   $('rxCode').textContent = list.map(pretty).join(' ');
   $('rxChar').textContent = body;
   mrLog('受信 「' + body + '」 ' + list.map(pretty).join(' '), 'g');
+  // 全部読めないときは、まず送信側と符号系が揃っているかを疑う
+  if (body.indexOf('?') >= 0){
+    const other = isJa() ? '欧文' : '和文';
+    mrLog('読めない符号があります。送信側が' + other + 'かもしれません', 's');
+  }
   log('モールス受信 → ' + body);
   rxPlay(list);
   return true;
 }
 window.morseRx = morseRx;
 
+/* iOS のホーム画面 Web アプリでは new Notification() が使えず、
+   サービスワーカー経由の showNotification() だけが通知の経路になる。
+   同じ場所に置いた sw.js を登録しておく                       */
+let swReg = null, swMsg = '未登録';
+(async function registerSW(){
+  if (!('serviceWorker' in navigator)){ swMsg = '非対応'; updDiag(); return; }
+  try{
+    swReg = await navigator.serviceWorker.getRegistration();
+    if (!swReg) swReg = await navigator.serviceWorker.register('sw.js');
+    swMsg = '登録済み';
+  }catch(e){
+    swMsg = '登録できず(' + e.message + ')';
+  }
+  updDiag();
+})();
+
 function updDiag(){
   const bits = [];
   bits.push('Notification ' + (('Notification' in window) ? '対応' : '非対応'));
   if ('Notification' in window) bits.push('許可 ' + Notification.permission);
   bits.push(navigator.standalone ? 'ホーム画面' : 'ブラウザ');
+  bits.push('SW ' + swMsg);
   bits.push('vibrate ' + (navigator.vibrate ? '有' : '無'));
   if (rxErr) bits.push('直近のエラー ' + rxErr);
   $('rxDiag').textContent = bits.join(' / ');
@@ -1363,10 +1564,9 @@ async function notify(title, body){
     if (!('Notification' in window)) throw new Error('Notification 非対応');
     if (Notification.permission !== 'granted') throw new Error('未許可');
     const opts = { body, tag: 'mr-' + (++ntSeq), silent: false };
-    if (navigator.serviceWorker){
-      const reg = await navigator.serviceWorker.getRegistration();
-      if (reg && reg.showNotification){ await reg.showNotification(title, opts); return true; }
-    }
+    const reg = swReg || (navigator.serviceWorker ? await navigator.serviceWorker.getRegistration() : null);
+    if (reg && reg.showNotification){ await reg.showNotification(title, opts); return true; }
+    // iOS のホーム画面 Web アプリではこちらは効かない。SW が要る
     new Notification(title, opts);
     return true;
   }catch(e){ rxErr = e.message; updDiag(); return false; }
