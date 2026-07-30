@@ -64,7 +64,13 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-text-size-adjust:100%}
-  body{padding:14px 14px calc(28px + env(safe-area-inset-bottom));max-width:720px;margin:0 auto}
+  body{padding:calc(14px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right))
+    calc(28px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+    max-width:720px;margin:0 auto}
+  /* ホーム画面から起動すると画面がステータスバーの下まで伸びる。
+     時計やバッテリーに本文が重ならないよう、上端に安全域ぶんの帯を敷く */
+  body::before{content:'';position:fixed;top:0;left:0;right:0;z-index:7;
+    height:env(safe-area-inset-top);background:var(--bg);pointer-events:none}
   h1{font-size:15px;font-weight:600;margin:0 0 2px}
   .sub{font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.06em;
     text-transform:uppercase;margin:0 0 16px}
@@ -76,7 +82,7 @@
   #scope1{height:156px}
   /* ---- ページ切り替え ---- */
   .page[hidden]{display:none}
-  .tabs{display:flex;gap:6px;position:sticky;top:0;z-index:8;
+  .tabs{display:flex;gap:6px;position:sticky;top:env(safe-area-inset-top);z-index:8;
     background:var(--bg);padding:8px 0 10px;margin:0 0 4px}
   .tabs button{flex:1 1 0;min-width:0;font-family:var(--mono);font-size:12px;
     letter-spacing:.06em;padding:11px 8px;background:var(--panel2);color:var(--dim)}
