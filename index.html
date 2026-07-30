@@ -180,6 +180,9 @@
       <button data-hi="22500">22.5k</button>
     </div>
     <p class="lbl" style="margin:9px 0 0">
+      理論上の上限 <span id="fsCeil">24000</span> Hz — 内部レートで決まります
+    </p>
+    <p class="lbl" style="margin:5px 0 0">
       実際の割り当て <span class="val" id="fsVal">15000 – 19500</span> Hz
       <span style="color:var(--dim)">/ 幅 <span id="fsBw">4500</span> Hz(<span id="fsBins">96</span> ビン)
       / freqStart <span id="fsRaw">320</span></span>
@@ -211,6 +214,13 @@
     <button id="btnSweep">10 → 23 kHz スイープ</button>
     <button id="btnTone">単一トーンを鳴らす</button>
   </div>
+  <div class="row" style="margin-top:8px">
+    <button id="btnMeas" class="primary">自機の上限を測る</button>
+    <button id="btnRate">サンプルレートを調べる</button>
+  </div>
+  <p class="lbl" id="measSum" style="margin:9px 0 0">未測定</p>
+  <table id="measTbl" style="margin-top:7px"></table>
+  <table id="rateTbl" style="margin-top:9px"></table>
   <div class="field" style="margin-top:11px">
     <p class="lbl" style="margin-bottom:4px">トーン周波数 <span class="val" id="toneVal">18000</span> Hz</p>
     <input type="range" id="tone" min="8000" max="23000" step="250" value="18000">
@@ -421,7 +431,22 @@
 </section>
 
 <section>
-  <p class="lbl">実効設定 — 要求ではなく実際に適用された値</p>
+  <p class="lbl">内部処理レート — 上限を 24 kHz より上げたいとき</p>
+  <div class="field">
+    <select id="rate">
+      <option value="48000" selected>48000 Hz — 幅 4500 Hz / 上限 24 kHz(既定)</option>
+      <option value="96000">96000 Hz — 幅 9000 Hz / 上限 48 kHz(対応機のみ)</option>
+    </select>
+  </div>
+  <div class="warnbox">
+    ggwave はフレーム長を 1024 より長くできないので、内部レートを上げるとビン幅が
+    そのまま太くなります。96 kHz にすると上限は 48 kHz まで伸びますが、
+    <strong>占有幅も 9000 Hz に倍増</strong>し、1 フレームの時間が半分になるぶん弱くなります。
+    <br>そしてこれが効くのは<strong>マイクとスピーカーが実際に 96 kHz を扱える機種だけ</strong>です。
+    iPhone の内蔵マイクは 48 kHz なので、いくら内部レートを上げても 24 kHz より上には何も入りません。
+    まず「サンプルレートを調べる」で確かめてください。変更すると<strong>マイクを再起動</strong>します。
+  </div>
+  <p class="lbl" style="margin:14px 0 7px">実効設定 — 要求ではなく実際に適用された値</p>
   <table id="diag"><tr><td>状態</td><td>マイク未開始</td></tr></table>
   <p class="note">
     <code>echoCancellation</code> / <code>noiseSuppression</code> / <code>autoGainControl</code>
@@ -457,31 +482,46 @@
    AUDIBLE / ULTRASOUND は bytesPerTx=3 extra=1 → 96 ビン = 4500 Hz
    DT 系は bytesPerTx=1 extra=1 →  32 ビン = 1500 Hz
    MT 系は bytesPerTx=1 extra=2 →  16 ビン =  750 Hz            */
-const BINHZ = 46.875;                                  // 48000 / 1024
+/* ビン幅は「内部処理レート / フレーム長」。ggwave は kMaxSamplesPerFrame = 1024
+   でフレーム長を 1024 より長くできないので、内部レートを上げるとビンが太くなり
+   占有幅もそのぶん広がる。48 kHz なら 46.875 Hz、96 kHz なら 93.75 Hz     */
+const FRAME = 1024;
+let RATE = 48000;
+let BINHZ = RATE / FRAME;
+function setRate(sr){ RATE = sr; BINHZ = sr / FRAME; }
+function pickRate(){
+  const want = store.get('tx.rate', 48000);
+  return (want >= 96000 && ctx && ctx.sampleRate >= 96000) ? 96000 : 48000;
+}
 const binsOf = key => key.indexOf('_MT_') >= 0 ? 16
                     : key.indexOf('_DT_') >= 0 ? 32
                     : 96;
 const bandwOf = key => binsOf(key) * BINHZ;            // 4500 / 1500 / 750
-const NYQ_NEEDED = 512 * BINHZ;                        // 24000。1024 点 FFT で使えるビンの端
-const FS_MIN = 160;
+const nyqNeeded = () => (FRAME/2) * BINHZ;             // 使えるビンの端。48 kHz で 24000
+const fsMin = () => Math.round(7500 / BINHZ);          // 下限は 7500 Hz 相当に固定
 // 上端がナイキストに収まる freqStart の上限。幅が狭いプロトコルほど上げられる
-const fsMax = () => 512 - binsOf(curProto());
+const fsMax = key => (FRAME/2) - binsOf(key || curProto());
 const hz = fs => Math.round(fs * BINHZ);
 const curProto = () => $('proto').value;
 const curBandw = () => bandwOf(curProto());
 
-// 帯域スキャンの 6 枠。上限が約 1 kHz ずつ上がる階段になっている。
-// 高い帯域ほど堅牢な変種を割り当ててあるので、上段が落ちたときに
-// 「プロトコルのせい」ではなく「ハードの限界」と断定できる。
-// Node 上のループバックで各 20 回 = 120/120 成功を確認済み
+// 帯域スキャンの 6 枠。ビン番号ではなく「上端の周波数」で定義する。
+// 内部レートを変えるとビンの意味が変わるので、周波数で持つほうが安全。
+// 天井付近を 750 Hz 刻みで刻んであり、どの高さで落ちるかを詰められる。
+// 高い枠ほど堅牢な変種を当ててあるので、上段が落ちたときに
+// 「プロトコルのせい」ではなく「ハードの限界」と断定できる
+const SLOT_STEP = 750;
 const SLOTS = [
-  { key:'GGWAVE_PROTOCOL_AUDIBLE_FASTEST',    fs:277, v:'Fastest' },
-  { key:'GGWAVE_PROTOCOL_ULTRASOUND_FASTEST', fs:299, v:'Fastest' },
-  { key:'GGWAVE_PROTOCOL_AUDIBLE_FAST',       fs:320, v:'Fast'    },
-  { key:'GGWAVE_PROTOCOL_ULTRASOUND_FAST',    fs:341, v:'Fast'    },
-  { key:'GGWAVE_PROTOCOL_AUDIBLE_NORMAL',     fs:363, v:'Normal'  },
-  { key:'GGWAVE_PROTOCOL_ULTRASOUND_NORMAL',  fs:384, v:'Normal'  },
+  { key:'GGWAVE_PROTOCOL_AUDIBLE_FASTEST',    top:20250, v:'Fastest' },
+  { key:'GGWAVE_PROTOCOL_ULTRASOUND_FASTEST', top:21000, v:'Fastest' },
+  { key:'GGWAVE_PROTOCOL_AUDIBLE_FAST',       top:21750, v:'Fast'    },
+  { key:'GGWAVE_PROTOCOL_ULTRASOUND_FAST',    top:22500, v:'Fast'    },
+  { key:'GGWAVE_PROTOCOL_AUDIBLE_NORMAL',     top:23250, v:'Normal'  },
+  { key:'GGWAVE_PROTOCOL_ULTRASOUND_NORMAL',  top:24000, v:'Normal'  },
 ];
+// 上端が指定値になる freqStart。上端はナイキストに収める
+const slotFs = s => Math.max(fsMin(), Math.min(fsMax(s.key),
+                     Math.round((s.top - bandwOf(s.key)) / BINHZ)));
 
 let ctx=null, ggwave=null, instance=null, mode='manual';
 let stream=null, micSource=null, analyser=null, processor=null, sinkGain=null;
@@ -528,11 +568,31 @@ function silentKickStop(){
 async function ensureCtx(){
   if (!ctx){
     const AC = window.AudioContext || window.webkitAudioContext;
-    try { ctx = new AC({ sampleRate:48000 }); } catch(e){ ctx = new AC(); }
+    const want = store.get('tx.rate', 48000);
+    try { ctx = new AC({ sampleRate:want }); }
+    catch(e){
+      try { ctx = new AC({ sampleRate:48000 }); } catch(e2){ ctx = new AC(); }
+    }
   }
+  setRate(pickRate());
   silentKick();
   if (ctx.state !== 'running') await ctx.resume();
   return ctx;
+}
+
+/* ---------- どのサンプルレートが取れるか実際に作って確かめる ----------
+   出力側は AudioContext を作ってみれば分かる。ただしこれは「出せるか」
+   でしかなく、マイクが何を返すかは別問題なので両方見る            */
+async function probeRates(){
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const out = [];
+  for (const r of [192000, 96000, 88200, 48000, 44100]){
+    let c = null, got = null;
+    try { c = new AC({ sampleRate:r }); got = c.sampleRate; } catch(e){ got = null; }
+    if (c) { try { await c.close(); } catch(e){} }
+    out.push({ want:r, got, ok: got === r });
+  }
+  return out;
 }
 
 function log(msg, cls){
@@ -559,12 +619,29 @@ const ALL_PROTO = [
 ];
 
 let builtKey = null;
+// 表示中の帯域がどの内部レート前提で描かれているか。復元直後は 48 kHz 前提なので
+// 実際のレートが確定した時点で、周波数を保ったままビン番号を引き直す
+let labelRate = 48000;
+function syncRate(){
+  if (labelRate === RATE) return;
+  const top = parseFloat($('fsHi').value);
+  labelRate = RATE;
+  const fs = Math.max(fsMin(), Math.min(fsMax(),
+             Math.round((isFinite(top) ? top - curBandw() : 15000) / BINHZ)));
+  $('fs').value = fs;
+  $('fsLo').value = hz(fs);
+  $('fsHi').value = hz(fs) + curBandw();
+  updateFsLabel();
+}
 function configKey(){
-  return mode === 'scan' ? 'scan' : 'manual:' + curProto() + ':' + $('fs').value + ':' + (ctx ? ctx.sampleRate : 0);
+  const base = RATE + ':' + (ctx ? ctx.sampleRate : 0);
+  return mode === 'scan' ? 'scan:' + base
+                         : 'manual:' + curProto() + ':' + $('fs').value + ':' + base;
 }
 
 async function rebuild(newMode, force){
   await ensureCtx();
+  syncRate();
   if (!ggwave){
     ggwave = await ggwave_factory();
     if (ggwave.disableLog) ggwave.disableLog();   // ggwave 自身の stderr 出力を止める
@@ -593,11 +670,11 @@ async function rebuild(newMode, force){
   });
 
   if (mode === 'scan'){
-    SLOTS.forEach(s => on(s.key, true, true, s.fs));
+    SLOTS.forEach(s => on(s.key, true, true, slotFs(s)));
   } else {
     // 受信は 6 帯域の梯子を常に開けておく。相手がスキャンを流したとき、
     // こちらは何も操作しなくても受かる。これが「受信側は待つだけ」の根拠
-    SLOTS.forEach(s => on(s.key, false, true, s.fs));
+    SLOTS.forEach(s => on(s.key, false, true, slotFs(s)));
     // 送信に使う 1 つだけスライダーの値にする(梯子と同じものを選んだ
     // ときは、その 1 段は梯子の位置から外れる)
     const fs = parseInt($('fs').value, 10);
@@ -605,8 +682,10 @@ async function rebuild(newMode, force){
   }
 
   const p = ggwave.getDefaultParameters();
-  p.sampleRateInp = ctx.sampleRate;
-  p.sampleRateOut = ctx.sampleRate;
+  p.sampleRateInp   = ctx.sampleRate;
+  p.sampleRateOut   = ctx.sampleRate;
+  p.sampleRate      = RATE;        // 内部処理レート。ここがビン幅を決める
+  p.samplesPerFrame = FRAME;
   instance = ggwave.init(p);
   if (instance < 0){ builtKey = null; throw new Error('ggwave.init に失敗'); }
   builtKey = key;
@@ -632,7 +711,7 @@ function bandTop(){
 }
 
 function activeBands(){
-  if (mode === 'scan') return SLOTS.map(s => [hz(s.fs), hz(s.fs)+bandwOf(s.key)]);
+  if (mode === 'scan') return SLOTS.map(s => [hz(slotFs(s)), hz(slotFs(s))+bandwOf(s.key)]);
   const fs = parseInt($('fs').value,10);
   return [[hz(fs), hz(fs)+curBandw()]];
 }
@@ -779,7 +858,7 @@ function onDecoded(text){
     if (SLOTS[i]){
       scanResult[i] = true;
       renderScan();
-      log(`受信 [帯域 ${hz(SLOTS[i].fs)}–${hz(SLOTS[i].fs)+bandwOf(SLOTS[i].key)} Hz] ${text}`);
+      log(`受信 [帯域 ${hz(slotFs(SLOTS[i]))}–${hz(slotFs(SLOTS[i]))+bandwOf(SLOTS[i].key)} Hz] ${text}`);
       if (navigator.vibrate) navigator.vibrate(40);
       return;
     }
@@ -866,7 +945,7 @@ function renderScan(){
     const st = scanResult[i] === true ? '<span class="ok">届いた</span>'
              : scanResult[i] === 'sent' ? '<span class="warn">送信済</span>'
              : '<span style="color:var(--dim)">—</span>';
-    return `<tr><td>#${i} ${s.v}</td><td>${hz(s.fs)} – ${hz(s.fs)+bandwOf(s.key)} Hz</td><td>${st}</td></tr>`;
+    return `<tr><td>#${i} ${s.v}</td><td>${hz(slotFs(s))} – ${hz(slotFs(s))+bandwOf(s.key)} Hz</td><td>${st}</td></tr>`;
   }).join('');
 }
 
@@ -878,7 +957,7 @@ async function runScan(){
     await rebuild('scan');
     log('帯域スキャン開始', 't');
     for (let i=0;i<SLOTS.length;i++){
-      $('btnScan').textContent = `送信中 ${i+1}/${SLOTS.length} — ${hz(SLOTS[i].fs)}Hz`;
+      $('btnScan').textContent = `送信中 ${i+1}/${SLOTS.length} — 上端 ${SLOTS[i].top}Hz`;
       scanResult[i] = scanResult[i] === true ? true : 'sent';
       renderScan();
       // 各帯域を 2 回送る。1 回の取りこぼしで「届かない」と誤判定しないため
@@ -947,6 +1026,92 @@ async function toggleTone(){
 }
 
 /* ============================================================
+   上限の測定 — トーンを刻んで、各周波数で拾えたレベルを記録する
+   ピーク保持の破線は「どこかで落ちる」しか分からないので、数値で出す
+   ============================================================ */
+const wait = ms => new Promise(r => setTimeout(r, ms));
+let measuring = false;
+
+async function measureCeiling(){
+  if (measuring) return;
+  if (!running || !analyser){ log('先にマイクを開始してください', 'bad'); return; }
+  measuring = true;
+  $('btnMeas').disabled = true;
+  const nyq = ctx.sampleRate/2;
+  const F0 = 15000, STEP = 250;
+  const F1 = Math.min(nyq - STEP, 40000);
+  const gn = ctx.createGain(); gn.gain.value = .3;
+  const osc = ctx.createOscillator();
+  osc.connect(gn); gn.connect(ctx.destination);
+  osc.frequency.value = F0;
+  setSession('play-and-record');
+  osc.start();
+  const rows = [];
+  try{
+    log(`上限の測定を開始 ${F0} → ${F1} Hz / ${STEP} Hz 刻み`, 't');
+    // 何も鳴らさずに暗騒音を取る
+    gn.gain.value = 0; await wait(250);
+    const floor = await peakAround(F0, nyq);
+    gn.gain.value = .3;
+    for (let f = F0; f <= F1; f += STEP){
+      if (!measuring) break;
+      osc.frequency.value = f;
+      $('btnMeas').textContent = `測定中 ${(f/1000).toFixed(2)} kHz`;
+      holdTap(900);
+      await wait(160);                          // 応答が落ち着くのを待つ
+      const db = await peakAround(f, nyq);
+      rows.push({ f, db, snr: db - floor });
+      renderMeas(rows, floor, false);
+    }
+  }catch(e){
+    log('測定エラー: '+e.message, 'bad');
+  }finally{
+    try{ osc.stop(); osc.disconnect(); gn.disconnect(); }catch(e){}
+    measuring = false;
+    $('btnMeas').disabled = false;
+    $('btnMeas').textContent = '自機の上限を測る';
+    renderMeas(rows, floor2(rows), true);
+    holdTap(600);
+  }
+}
+function floor2(rows){ return rows.length ? rows[0].db - rows[0].snr : -120; }
+
+// 指定周波数の前後 3 ビンで最大値を取る。数フレーム見て最大を採る
+async function peakAround(f, nyq){
+  const bins = freqData.length;
+  const c = Math.round(f / nyq * bins);
+  let best = -140;
+  for (let k = 0; k < 8; k++){
+    analyser.getFloatFrequencyData(freqData);
+    for (let i = Math.max(0, c-3); i <= Math.min(bins-1, c+3); i++){
+      if (freqData[i] > best) best = freqData[i];
+    }
+    await wait(25);
+  }
+  return best;
+}
+
+function renderMeas(rows, floor, done){
+  if (!rows.length){ $('measTbl').innerHTML = ''; return; }
+  const SNR_OK = 12;                       // これ以上あれば「拾えている」
+  let ceil = null;
+  for (const r of rows) if (r.snr >= SNR_OK) ceil = r.f;
+  const html = rows.map(r => {
+    const cls = r.snr >= SNR_OK ? 'ok' : r.snr >= 6 ? 'warn' : 'bad';
+    const bar = '█'.repeat(Math.max(0, Math.min(14, Math.round(r.snr/3))));
+    return `<tr><td>${(r.f/1000).toFixed(2)} kHz</td>` +
+           `<td>${r.db.toFixed(1)} dB</td>` +
+           `<td><span class="${cls}">${r.snr.toFixed(0)} dB ${bar}</span></td></tr>`;
+  }).join('');
+  $('measTbl').innerHTML = html;
+  $('measSum').innerHTML = done
+    ? (ceil ? `暗騒音 ${floor.toFixed(1)} dB / <span class="val">自機で拾えた最高は ${ceil} Hz</span>` +
+              ` — 使用帯の上端はこれ以下にしてください`
+            : `どの周波数でも ${SNR_OK} dB 差が出ませんでした。音量とマイク許可を確認してください`)
+    : '測定中 …';
+}
+
+/* ============================================================
    診断表
    ============================================================ */
 function showDiag(err){
@@ -970,7 +1135,9 @@ function showDiag(err){
     rows.push(['sampleRate', (ctx.sampleRate>=44100?'<span class="ok">':'<span class="bad">')+ctx.sampleRate+' Hz</span>']);
     // 48 kHz だとナイキストは 24000 でちょうど一致する。> ではなく >= で判定する
     const top = bandTop();
-    rows.push(['ナイキスト周波数', (ctx.sampleRate/2 >= NYQ_NEEDED ? '<span class="ok">':'<span class="warn">')+(ctx.sampleRate/2)+' Hz</span>']);
+    rows.push(['ナイキスト周波数', (ctx.sampleRate/2 >= nyqNeeded() ? '<span class="ok">':'<span class="warn">')+(ctx.sampleRate/2)+' Hz</span>']);
+    rows.push(['ggwave 内部レート', RATE+' Hz / ビン幅 '+BINHZ+' Hz']);
+    rows.push(['理論上の最高周波数', nyqNeeded()+' Hz']);
     rows.push(['いま使う帯域の上端', (ctx.sampleRate/2 >= top ? '<span class="ok">':'<span class="bad">')+top+' Hz</span>']);
   }
   if (stream){
@@ -997,14 +1164,16 @@ function showDiag(err){
 function updateFsLabel(){
   const fs = parseInt($('fs').value,10);
   const bw = curBandw(), mx = fsMax();
+  $('fsCeil').textContent = nyqNeeded();
   $('fsVal').textContent = hz(fs) + ' – ' + (hz(fs)+bw);
   $('fsRaw').textContent = fs;
   $('fsBw').textContent = bw;
   $('fsBins').textContent = binsOf(curProto());
   // 幅が変わると入れられる範囲も変わる。入力欄と目盛を合わせておく
   $('fs').max = mx;
-  $('fsLo').min = hz(FS_MIN);      $('fsLo').max = hz(mx);
-  $('fsHi').min = hz(FS_MIN) + bw; $('fsHi').max = hz(mx) + bw;
+  $('fs').min = fsMin();
+  $('fsLo').min = hz(fsMin());      $('fsLo').max = hz(mx);
+  $('fsHi').min = hz(fsMin()) + bw; $('fsHi').max = hz(mx) + bw;
 }
 
 // 入力は Hz、内部は FFT ビン番号。1 ビン = 46.875 Hz なので必ず丸めが入る
@@ -1020,7 +1189,7 @@ function scheduleRebuild(){
   }, 250);
 }
 function applyFs(fs, keep){
-  fs = Math.max(FS_MIN, Math.min(fsMax(), Math.round(fs)));
+  fs = Math.max(fsMin(), Math.min(fsMax(), Math.round(fs)));
   $('fs').value = fs;
   if (keep !== 'lo') $('fsLo').value = hz(fs);
   if (keep !== 'hi') $('fsHi').value = hz(fs) + curBandw();
@@ -1061,6 +1230,49 @@ $('btnMic').onclick   = () => running ? stopMic() : startMic();
 $('btnSend').onclick  = send;
 $('btnScan').onclick  = runScan;
 $('btnSweep').onclick = sweep;
+$('btnMeas').onclick  = () => measuring ? (measuring = false) : measureCeiling();
+$('btnRate').onclick  = async () => {
+  $('btnRate').disabled = true;
+  $('rateTbl').innerHTML = '<tr><td>調査中…</td><td></td></tr>';
+  const list = await probeRates();
+  const mic = stream ? (stream.getAudioTracks()[0].getSettings().sampleRate || null) : null;
+  const rows = list.map(r => `<tr><td>出力 ${r.want} Hz</td><td>` +
+    (r.ok ? '<span class="ok">そのまま取れた</span>'
+          : r.got ? '<span class="warn">'+r.got+' Hz に丸められた</span>'
+                  : '<span class="bad">作れない</span>') + '</td></tr>').join('');
+  const micRow = `<tr><td>マイクの実レート</td><td>` +
+    (mic ? (mic >= 96000 ? '<span class="ok">' : '<span class="warn">') + mic + ' Hz</span>'
+         : '<span class="warn">未報告 — AudioContext の ' + (ctx ? ctx.sampleRate : '?') + ' Hz で受けています</span>') +
+    '</td></tr>';
+  const best = list.find(r => r.ok);
+  const verdict = `<tr><td>判定</td><td>` +
+    (best && best.want >= 96000 && mic && mic >= 96000
+      ? '<span class="ok">96 kHz が使えます。内部レートを上げられます</span>'
+      : '<span class="warn">24 kHz より上は無理です。48000 Hz のままにしてください</span>') + '</td></tr>';
+  $('rateTbl').innerHTML = rows + micRow + verdict;
+  $('btnRate').disabled = false;
+};
+$('rate').onchange = async () => {
+  const keepTop = parseFloat($('fsHi').value);
+  store.set('tx.rate', +$('rate').value);
+  const wasRunning = running;
+  if (wasRunning) stopMic();
+  if (ctx){ try{ await ctx.close(); }catch(e){} ctx = null; }
+  instance = null; builtKey = null; ggwave = null;
+  await ensureCtx();
+  if (RATE !== +$('rate').value){
+    log(`内部レート ${$('rate').value} Hz は使えません。${RATE} Hz で動かします`, 'bad');
+    $('rate').value = String(RATE);
+    store.set('tx.rate', RATE);
+  } else {
+    log(`内部レートを ${RATE} Hz にしました。ビン幅 ${BINHZ} Hz / 幅 ${curBandw()} Hz`, 't');
+  }
+  // 周波数を保つ。ビン番号は意味が変わっている
+  labelRate = RATE;
+  applyFs((isFinite(keepTop) ? keepTop - curBandw() : 15000) / BINHZ);
+  renderScan(); showDiag();
+  if (wasRunning) startMic();
+};
 $('btnTone').onclick  = toggleTone;
 $('btnScanReset').onclick = () => {
   for (const k in scanResult) delete scanResult[k];
@@ -1086,6 +1298,8 @@ $('txText').oninput = countBytes;
   if (p && $('proto').querySelector('option[value="'+p+'"]')) $('proto').value = p;
   const fs = store.get('tx.fs', null);
   applyFs(fs == null ? 320 : fs);
+  const r = store.get('tx.rate', null);
+  if (r) $('rate').value = String(r);
   const v = store.get('tx.vol', null);
   if (v != null){ $('vol').value = v; $('volVal').textContent = v; }
   countBytes();
