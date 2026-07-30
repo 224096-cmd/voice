@@ -152,12 +152,34 @@
   .codetbl td:nth-child(2n+1){color:var(--ink);width:9%}
   #mrFlash{position:fixed;inset:0;background:var(--sig);opacity:0;pointer-events:none;
     transition:opacity .09s linear;z-index:9}
+  /* ---- 電鍵 ---- */
+  .keywrap{display:flex;justify-content:center;padding:6px 0 4px}
+  #mkKey{width:158px;height:158px;border-radius:50%;padding:0;
+    background:radial-gradient(circle at 38% 32%, #24344A, #16202C 70%);
+    border:2px solid var(--line);color:var(--sig);font-family:var(--mono);font-size:40px;
+    line-height:1;display:flex;align-items:center;justify-content:center;
+    touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
+    transition:transform .04s linear,background .04s linear,border-color .04s linear;
+    box-shadow:0 2px 0 #0A1017 inset}
+  #mkKey.down{background:var(--sig);border-color:var(--sig);color:#141A08;transform:scale(.965)}
+  #mkKey.down.dash{background:var(--hot);border-color:var(--hot);color:#1A0A0A}
+  #mkKey:active{background:none}
+  #mkKey.down:active{background:var(--sig)}
+  #mkKey.down.dash:active{background:var(--hot)}
+  .mkstat{display:flex;justify-content:space-between;align-items:baseline;
+    font-family:var(--mono);margin:9px 0 6px}
+  .mkstat #mkLive{font-size:12px;color:var(--dim)}
+  .mkstat #mkMs{font-size:22px;color:var(--sig);font-variant-numeric:tabular-nums}
+  .mkbar{position:relative;height:10px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:5px;overflow:hidden}
+  .mkbar i{display:block;height:100%;width:0;background:var(--sig)}
+  .mkbar #mkThMark{position:absolute;top:0;bottom:0;width:2px;background:var(--ink);opacity:.75}
 </style>
 </head>
 <body>
 
 <h1>超音波データ通信 実機テスト</h1>
-<p class="sub">ggwave 0.4.3 · 周波数帯可変 · 帯域スキャン · タップ入力モールス · rev.3</p>
+<p class="sub">ggwave 0.4.3 · 周波数帯可変 · 帯域スキャン · タップ入力モールス · 電鍵 · rev.4</p>
 
 <nav class="tabs">
   <button class="tab on" data-page="1">通信</button>
@@ -218,6 +240,7 @@
 <!-- ============ 2 ページ目 — 元の画面 ============ -->
 <div id="page2" class="page" hidden>
 <a class="jump" href="#morse">↓ モールス入力へ</a>
+<a class="jump" href="#mkey" style="margin-left:6px">↓ 電鍵へ</a>
 
 <section>
   <p class="lbl">受信スペクトラム</p>
@@ -417,6 +440,97 @@
   </details>
 </section>
 
+<!-- ============ 電鍵。押した長さで打つ普通のモールス ============ -->
+<section id="mkey">
+  <p class="lbl">電鍵 — 押した長さで打つ普通のモールス</p>
+
+  <div class="keywrap">
+    <button id="mkKey" data-hold="1200" aria-label="電鍵">○</button>
+  </div>
+
+  <div class="mkstat">
+    <span id="mkLive">押していません</span>
+    <span id="mkMs">0 ms</span>
+  </div>
+  <div class="mkbar"><i id="mkFill"></i><span id="mkThMark"></span></div>
+  <p class="lbl" id="mkNext" style="margin:7px 0 0">—</p>
+
+  <div class="mrout">
+    <div><span class="k">符号</span><b id="mkSym" class="code">—</b></div>
+    <div><span class="k">文字</span><b id="mkChar">—</b></div>
+    <div><span class="k">本文</span><b id="mkText">—</b></div>
+  </div>
+
+  <div class="kbd">
+    <button id="mkFix" class="sm">文字確定</button>
+    <button id="mkSpace" class="sm">語区切り</button>
+    <button id="mkBack" class="sm">1つ戻す</button>
+  </div>
+  <div class="kbd">
+    <button id="mkTx" class="sm">今すぐ送信</button>
+    <button id="mkClr" class="sm">消去</button>
+  </div>
+
+  <div class="field" style="margin-top:12px">
+    <p class="lbl" style="margin-bottom:5px">長点のしきい値 — これ以上押したら長点</p>
+    <div class="fsrow">
+      <input type="number" id="mkDash" inputmode="numeric" step="10" value="400">
+      <span class="unit">ms 以上</span>
+    </div>
+  </div>
+  <div class="field">
+    <p class="lbl" style="margin-bottom:5px">文字の確定 — 離してからこれだけあいたら 1 文字</p>
+    <div class="fsrow">
+      <input type="number" id="mkChr" inputmode="numeric" step="50" value="600">
+      <span class="unit">ms</span>
+    </div>
+  </div>
+  <div class="field">
+    <p class="lbl" style="margin-bottom:5px">語の区切り — さらにあいたら本文に空白を入れる（0 で使わない）</p>
+    <div class="fsrow">
+      <input type="number" id="mkWord" inputmode="numeric" step="50" value="1400">
+      <span class="unit">ms</span>
+    </div>
+  </div>
+  <div class="field">
+    <p class="lbl" style="margin-bottom:5px">自動送信 — この長さの無音で超音波に流す</p>
+    <div class="fsrow">
+      <input type="number" id="mkEnd" inputmode="numeric" step="500" value="4000">
+      <span class="unit">ms</span>
+    </div>
+    <label class="chk"><input type="checkbox" id="mkAuto">無音で自動送信する（切ならボタンだけで送る）</label>
+  </div>
+  <div class="field">
+    <p class="lbl" style="margin-bottom:5px">単位長 — 短点のつもりの長さ。押せば上の 3 つを引き直します</p>
+    <div class="fsrow">
+      <input type="number" id="mkUnit" inputmode="numeric" step="10" value="200">
+      <span class="unit">ms</span>
+      <button class="mini" id="mkDerive" data-hold="600">引き直す</button>
+    </div>
+    <div class="presets">
+      <button data-mkp="120">速め 120</button>
+      <button data-mkp="200">標準 200</button>
+      <button data-mkp="320">ゆっくり 320</button>
+    </div>
+  </div>
+  <label class="chk"><input type="checkbox" id="mkTone" checked>押している間 700 Hz のサイドトーンを鳴らす</label>
+  <label class="chk"><input type="checkbox" id="mkHap" checked>打鍵のたびに画面を光らせて振動させる</label>
+
+  <p class="note">
+    <strong>打ち方。</strong>○ を短く押せば<strong>短点</strong>、しきい値より長く押せば<strong>長点</strong>です。
+    押している間はボタンが色で長短を教えます（アンバー＝短点 / 赤＝長点）。
+    <br>離してから<strong>文字の確定</strong>ぶんあくと 1 文字が決まり、さらに<strong>語の区切り</strong>ぶんあくと空白が入ります。
+    符号と本文はモールス入力と同じ場所に積まれるので、そのまま「今すぐ送信」で流せます。
+    <br>パソコンなら<strong>スペースキー</strong>でも打てます。4 つの時間はどれも独立で、互いに何 ms あけるという縛りはありません。
+  </p>
+  <div class="warnbox">
+    電鍵は<strong>マイクを開始していなくても打てます</strong>。音ではなく画面を押した長さで判定するので、
+    暗騒音やしきい値の調整は要りません。送信のときだけ「送信 — 手動」のプロトコルと使用帯を使うので、
+    <strong>2 台で同じ設定</strong>にしてください。
+    <br>語の区切りは <code>~</code> の符号列の中に空の区切りとして入ります。相手が古い版だと空白だけ落ちて文字は届きます。
+  </div>
+</section>
+
 <section>
   <p class="lbl">タイミング設定 — 入力側</p>
 
@@ -425,6 +539,7 @@
     <div class="fsrow">
       <input type="number" id="rgBeat" inputmode="decimal" step="0.05" value="0.70">
       <span class="unit">s</span>
+      <button class="mini" id="rgDerive" data-hold="600">引き直す</button>
       <button class="mini" data-cal="beat" data-hold="1000">実測</button>
     </div>
   </div>
@@ -465,8 +580,11 @@
   </div>
 
   <p class="note">
-    <strong>1 拍</strong>を変えると下の 3 つも比率どおりに引き直します。個別に上書きしてもかまいません。
-    <strong>実測</strong>を押して、要素を並べるつもりの間隔で 6 回以上叩くと、実際の 1 拍を測って入れます。
+    4 つの値は<strong>それぞれ独立</strong>です。互いに何秒以上あける、何倍以上にするといった縛りは
+    掛けていないので、順番が入れ替わるような値でもそのまま入ります。入れた数字は書き換えません。
+    <br><strong>引き直す</strong>を押したときだけ、1 拍から下の 3 つを比率どおりに引き直します。
+    <strong>実測</strong>は、要素を並べるつもりの間隔で 6 回以上叩くと実際の 1 拍を測って 4 つに反映します。
+    <br>上の帯は今の値で実際にどう判定されるかを描いたものです。値を極端にすると帯の並びもそのとおりに変わります。
   </p>
 </section>
 
@@ -1805,6 +1923,10 @@ const TX_HOLD = 600;     // 送信・再生が終わってから検出を戻す�
 const TAP_LO  = 150;     // 検出に使う帯域。超音波(15 kHz 以上)は見ない
 const TAP_HI  = 8000;
 const TX_PREFIX = '~';
+/* 語間。符号列の中では中身のない区切りとして運ぶので、'~.-//-...' のように
+   '/' が連なる形になる。復号できない文字は落ちるだけなので、相手が古い版でも
+   空白が消えるだけで文字は届く                                            */
+const WSP = '|';
 
 /* ---------- 符号表 ---------- */
 const EN = {
@@ -1842,6 +1964,16 @@ function tables(){
   return { enc, dec };
 }
 const pretty = c => c.replace(/\./g,'・').replace(/-/g,'－');
+// 語間は符号ではないので、表示と本文では別に扱う
+const showCode = c => c === WSP ? '␣' : pretty(c);
+const showList = l => l.map(showCode).join(' ');
+const bodyOf = (l, dec) => l.map(c => c === WSP ? ' ' : (dec[c] || '?')).join('');
+const trimList = l => {
+  const a = l.slice();
+  while (a.length && a[0] === WSP) a.shift();
+  while (a.length && a[a.length-1] === WSP) a.pop();
+  return a;
+};
 
 /* ============================================================
    タイミング。1 拍を基準にして残りを引く
@@ -1851,46 +1983,75 @@ const R_REP = 0.45, R_CHR = 1.80, R_END = 5.00;   // 1 拍に対する比率
 function derive(beat){
   return { beat, rep: beat*R_REP, chr: beat*R_CHR, end: beat*R_END };
 }
+/* 4 つの値は互いに独立。「連続は 1 拍の 8 割まで」「終了は文字区切りより
+   0.5 s 以上あと」といった縛りは置かない。入れた数字はそのまま使い、
+   書き戻しもしない。壊れないための下限だけ 0 で止める              */
+function secOf(id, def){
+  const v = parseFloat($(id).value);
+  return isFinite(v) ? clamp(v, 0, 600) : def;
+}
 function ranges(){
-  let beat = parseFloat($('rgBeat').value); if (!isFinite(beat)) beat = BEAT_DEF;
-  beat = clamp(beat, 0.15, 6);
-  let rep = parseFloat($('rgRep').value); if (!isFinite(rep)) rep = beat*R_REP;
-  rep = clamp(rep, 0.05, beat*0.8);
-  let chr = parseFloat($('rgChr').value); if (!isFinite(chr)) chr = beat*R_CHR;
-  chr = Math.max(chr, beat*1.2);
-  let end = parseFloat($('rgEnd').value); if (!isFinite(end)) end = beat*R_END;
-  end = Math.max(end, chr + 0.5);
-  return { beat, rep, chr, end };
+  const beat = secOf('rgBeat', BEAT_DEF);
+  return {
+    beat,
+    rep: secOf('rgRep', beat*R_REP),
+    chr: secOf('rgChr', beat*R_CHR),
+    end: secOf('rgEnd', beat*R_END)
+  };
+}
+// 0.70 は "0.70"、0.325 のような値は落とさずそのまま出す
+function fmt(v){
+  const s = v.toFixed(2);
+  return Math.abs(parseFloat(s) - v) < 1e-9 ? s : String(Math.round(v*1000)/1000);
 }
 function writeRanges(r){
-  $('rgBeat').value = r.beat.toFixed(2);
-  $('rgRep').value  = r.rep.toFixed(2);
-  $('rgChr').value  = r.chr.toFixed(2);
-  $('rgEnd').value  = r.end.toFixed(2);
+  $('rgBeat').value = fmt(r.beat);
+  $('rgRep').value  = fmt(r.rep);
+  $('rgChr').value  = fmt(r.chr);
+  $('rgEnd').value  = fmt(r.end);
 }
 function onRangeChange(){
   const r = ranges();
-  writeRanges(r);
   $('mrEndLbl').textContent = r.end.toFixed(1);
   renderTrack(r);
   store.set('mr3.ranges', r);
   updState();
 }
-function setBeat(beat){ writeRanges(derive(clamp(beat, 0.15, 6))); onRangeChange(); }
+// 1 拍から 4 つを引き直す。押されたときだけ走る
+function setBeat(beat){ writeRanges(derive(clamp(beat, 0.01, 600))); onRangeChange(); }
 
 const KCOL = { rep:'#6EE7A8', beat:'#F2A93B', chr:'#4FD1C5', end:'#FF6B6B' };
-function trackSpan(r){ return (r || ranges()).end + 0.5; }
+const KLBL = { rep:'長', beat:'1拍', chr:'字', end:'送信' };
+function trackSpan(r){
+  r = r || ranges();
+  return Math.max(r.end, r.chr, r.rep, r.beat, 0.2) + 0.5;
+}
+/* ある間隔がどう判定されるか。onTap / advanceState と同じ順で見るので、
+   値の大小がどう入れ替わっても帯と実際の動きがずれない            */
+function zoneAt(t, r){
+  if (t >= r.end) return 'end';
+  if (t <= r.rep)  return 'rep';
+  if (t >= r.chr)  return 'chr';
+  return 'beat';
+}
 // 同じ表示が 2 ページにある。ある側だけまとめて書く
 const dual = id => [$(id), $(id+'1')].filter(Boolean);
 function renderTrack(r){
   r = r || ranges();
   const total = trackSpan(r);
-  const zones = [
-    ['rep',  0,      r.rep, '長'],
-    ['beat', r.rep,  r.chr, '1拍'],
-    ['chr',  r.chr,  r.end, '字'],
-    ['end',  r.end,  total, '送信']
-  ];
+  // 境目を並べ替えて、区間ごとに真ん中の判定で色と札を決める
+  const cuts = [0, r.rep, r.chr, r.end, total]
+    .filter(v => v > 0 && v < total).sort((a,b) => a-b);
+  const zones = [];
+  let prev = 0;
+  for (const b of cuts.concat([total])){
+    if (b - prev < total/500) continue;
+    const k = zoneAt((prev+b)/2, r);
+    const last = zones[zones.length-1];
+    if (last && last[0] === k) last[2] = b;          // 同じ判定が続けばつなぐ
+    else zones.push([k, prev, b, KLBL[k]]);
+    prev = b;
+  }
   dual('mrTrack').forEach(el => {
     el.querySelectorAll('.z,.zt').forEach(n => n.remove());
     for (const [k,a,b,label] of zones){
@@ -1966,9 +2127,14 @@ function paintTapStat(extra){
 function render(){
   const { dec } = tables();
   const prov = group ? '(' + (group >= 2 ? '－' : '・') + ')' : '';
-  $('mrSym').textContent  = (sym || group) ? (pretty(sym) + prov) : '—';
-  $('mrChar').textContent = sym ? (dec[sym] || '?') : '—';
-  $('mrText').textContent = text || '—';
+  const s = (sym || group) ? (pretty(sym) + prov) : '—';
+  const c = sym ? (dec[sym] || '?') : '—';
+  const t = text ? text.replace(/ /g, '␣') : '—';
+  // モールス入力と電鍵は同じ本文を積む。両方の表示を書く
+  const put = (id, v) => { const e = $(id); if (e) e.textContent = v; };
+  put('mrSym', s);  put('mkSym', s);
+  put('mrChar', c); put('mkChar', c);
+  put('mrText', t); put('mkText', t);
 }
 function snap(){ return [sym, text, codes.slice()]; }
 
@@ -2108,13 +2274,14 @@ function advanceState(now){
 }
 
 async function finalize(auto){
+  mkStop(); mkUp = 0;
   closeGroup(); flushChar(); render();
-  const list = codes.slice(), body = text;
+  const list = trimList(codes), body = text.replace(/^ +| +$/g, '');
   lastTapMs = 0; group = 0;
   mode = (running && $('mrArm').checked) ? 'arm' : 'off';
   updState();
   if (!list.length) return;
-  mrLog('通信終了 → 「' + body + '」 ' + list.map(pretty).join(' '), 'g');
+  mrLog('通信終了 → 「' + body + '」 ' + showList(list), 'g');
   if (auto && !$('mrAuto').checked) return;    // 自動送信が切なら本文を残す
   codes = []; text = ''; sym = ''; hist = []; render();
   await doSend(list, body);
@@ -2122,11 +2289,15 @@ async function finalize(auto){
 
 async function doSend(list, body){
   if (sending) return;
+  list = trimList(list || []);
+  body = (body || '').replace(/^ +| +$/g, '');
+  if (!list.length){ mrLog('送る符号がありません', 's'); return; }
   sending = true;
   try{
-    $('txText').value = TX_PREFIX + list.join('/');
+    // 語間は中身のない区切りとして運ぶ。'|' はそのまま書いても復号側で落ちる
+    $('txText').value = TX_PREFIX + list.map(c => c === WSP ? '' : c).join('/');
     mrLog('超音波で送信 「' + body + '」 …', 's');
-    const ok = await send({ chat: body + '   ' + list.map(pretty).join(' ') });
+    const ok = await send({ chat: body + '   ' + showList(list) });
     if (ok === false) mrLog('送れませんでした。長すぎる場合は「今すぐ送信」で区切ってください', 's');
   }catch(e){
     mrLog('送信エラー: ' + e.message, 's');
@@ -2231,27 +2402,306 @@ function tick(){
 }
 
 /* ============================================================
+   電鍵 — 画面の ○ を押した長さで短点・長点を決める普通の打ち方
+     ・しきい値より長く押せば長点、内側なら短点
+     ・離してからの無音で 1 文字を確定し、さらにあけば語間が入る
+     ・4 つの時間はそれぞれ独立。互いに何 ms あけるという縛りは置かない
+     ・符号と本文はタップ入力と同じ置き場に積むので、そのまま送信できる
+     ・マイクは要らない。音ではなく押した長さだけを見る
+   ============================================================ */
+const MKD = { unit:200, dash:400, chr:600, word:1400, end:4000 };
+function mkNum(id, def){
+  const v = parseFloat($(id).value);
+  return isFinite(v) ? clamp(v, 0, 600000) : def;
+}
+function mkT(){
+  return {
+    unit: mkNum('mkUnit', MKD.unit),
+    dash: mkNum('mkDash', MKD.dash),
+    chr:  mkNum('mkChr',  MKD.chr),
+    word: mkNum('mkWord', MKD.word),
+    end:  mkNum('mkEnd',  MKD.end)
+  };
+}
+function mkSave(){
+  store.set('mk1', {
+    unit:$('mkUnit').value, dash:$('mkDash').value, chr:$('mkChr').value,
+    word:$('mkWord').value, end:$('mkEnd').value,
+    auto:$('mkAuto').checked, tone:$('mkTone').checked, hap:$('mkHap').checked
+  });
+}
+
+let mkDown = false, mkT0 = 0, mkUp = 0, mkRaf = null;
+let mkChrT = null, mkWordT = null, mkEndT = null;
+
+function mkStop(){
+  clearTimeout(mkChrT); clearTimeout(mkWordT); clearTimeout(mkEndT);
+  mkChrT = mkWordT = mkEndT = null;
+}
+// 離してからの経過で、文字の確定・語間・自動送信を仕掛ける
+function mkArmTimers(){
+  const t = mkT();
+  mkStop();
+  if (t.chr  > 0) mkChrT  = setTimeout(mkFixChar, t.chr);
+  if (t.word > 0) mkWordT = setTimeout(mkFixWord, t.word);
+  if (t.end  > 0 && $('mkAuto').checked) mkEndT = setTimeout(mkFinal, t.end);
+}
+
+/* ---------- サイドトーン。押している間だけ 700 Hz を出す ---------- */
+let sOsc = null, sGain = null, sCtx = null;
+function sideOn(){
+  if (!$('mkTone').checked) return;
+  try{
+    const p = ensureCtx();
+    if (p && p.then) p.then(sideStart, () => {});
+    else sideStart();
+  }catch(e){}
+}
+function sideStart(){
+  try{
+    if (!mkDown || !ctx || ctx.state === 'closed') return;
+    sideOff();
+    sCtx  = ctx;
+    sOsc  = sCtx.createOscillator();
+    sGain = sCtx.createGain();
+    sOsc.type = 'sine';
+    sOsc.frequency.value = 700;
+    sOsc.connect(sGain); sGain.connect(sCtx.destination);
+    const t0 = sCtx.currentTime;
+    sGain.gain.setValueAtTime(0.0001, t0);
+    sGain.gain.linearRampToValueAtTime(0.14, t0 + 0.006);
+    sOsc.start();
+  }catch(e){}
+}
+function sideOff(){
+  const o = sOsc, g = sGain, c = sCtx;
+  sOsc = null; sGain = null;
+  if (!o || !c) return;
+  try{
+    const t0 = c.currentTime;
+    g.gain.cancelScheduledValues(t0);
+    g.gain.setValueAtTime(g.gain.value, t0);
+    g.gain.linearRampToValueAtTime(0.0001, t0 + 0.008);
+    o.stop(t0 + 0.03);
+  }catch(e){}
+  setTimeout(() => { try{ o.disconnect(); g.disconnect(); }catch(e){} }, 80);
+}
+
+/* ---------- 押す / 離す ---------- */
+function mkPress(){
+  if (mkDown) return;
+  mkDown = true;
+  mkT0 = performance.now();
+  mkStop();
+  closeGroup();          // タップ入力で組み立て中の打数があれば先に締める
+  lastTapMs = 0;         // マイク側の経過判定を止める。電鍵とけんかさせない
+  $('mkKey').classList.add('down');
+  guard(1500);           // 自分のサイドトーンを打鍵と取り違えない
+  sideOn();
+  if ($('mkHap').checked){
+    flash(60);
+    if (navigator.vibrate){ try{ navigator.vibrate(10); }catch(e){} }
+  }
+  if (!mkRaf) mkRaf = requestAnimationFrame(mkTick);
+  mkPaint();
+}
+function mkRelease(){
+  if (!mkDown) return;
+  mkDown = false;
+  const ms = performance.now() - mkT0;
+  const t = mkT();
+  $('mkKey').classList.remove('down','dash');
+  sideOff();
+  guard(TX_HOLD);
+  mkUp = performance.now();
+  if (ms < 15){ mkPaint(); return; }        // 触っただけの取りこぼしは捨てる
+  hist.push(snap());
+  if (hist.length > 200) hist.shift();
+  const el = ms >= t.dash ? '-' : '.';
+  sym += el;
+  render(); updState();
+  mrLog(Math.round(ms) + ' ms → ' + (el === '-' ? '長点 －' : '短点 ・'));
+  mkArmTimers();
+  if (!mkRaf) mkRaf = requestAnimationFrame(mkTick);
+  mkPaint();
+}
+
+/* ---------- 確定 ---------- */
+function mkFixChar(){
+  mkChrT = null;
+  if (!sym) return;
+  const n = text.length;
+  flushChar();
+  render(); updState();
+  mrLog('文字を確定 → 「' + (text.slice(n) || '?') + '」', 'g');
+}
+function mkFixWord(){
+  mkWordT = null;
+  if (sym) flushChar();
+  if (!codes.length || codes[codes.length-1] === WSP){ render(); return; }
+  hist.push(snap());
+  if (hist.length > 200) hist.shift();
+  codes.push(WSP); text += ' ';
+  render(); updState();
+  mrLog('語間を入れました', 'g');
+}
+async function mkFinal(){
+  mkEndT = null;
+  if (sym) flushChar();
+  render();
+  const list = trimList(codes);
+  const body = text.replace(/^ +| +$/g, '');
+  if (!list.length) return;
+  codes = []; text = ''; sym = ''; hist = []; mkUp = 0;
+  render(); updState();
+  mrLog('無音 ' + (mkT().end/1000).toFixed(1) + ' s → 自動送信', 'g');
+  await doSend(list, body);
+}
+
+/* ---------- 表示 ---------- */
+function mkPaint(){
+  const t = mkT();
+  const now = performance.now();
+  const span = Math.max(t.dash*2, t.dash + 200, 400);
+  $('mkThMark').style.left = clamp(t.dash/span*100, 0, 100) + '%';
+  if (mkDown){
+    const ms = now - mkT0;
+    const dash = ms >= t.dash;
+    $('mkKey').classList.toggle('dash', dash);
+    $('mkLive').textContent = dash ? '長点 － — 離せば確定' : '短点 ・ — 伸ばせば長点';
+    $('mkMs').textContent = Math.round(ms) + ' ms';
+    const f = $('mkFill');
+    f.style.width = clamp(ms/span*100, 0, 100) + '%';
+    f.style.background = dash ? 'var(--hot)' : 'var(--sig)';
+    $('mkNext').textContent = 'しきい値 ' + Math.round(t.dash) + ' ms — 押している間';
+    return;
+  }
+  $('mkFill').style.width = '0%';
+  const idle = mkUp ? now - mkUp : 0;
+  if (!mkUp || (!sym && !codes.length)){
+    $('mkLive').textContent = '押していません';
+    $('mkMs').textContent = '0 ms';
+    $('mkNext').textContent = 'しきい値 ' + Math.round(t.dash) + ' ms 以上で長点';
+    return;
+  }
+  $('mkLive').textContent = '離してから';
+  $('mkMs').textContent = Math.round(idle) + ' ms';
+  const left = [];
+  if (sym && t.chr > 0 && idle < t.chr) left.push('文字確定まで ' + Math.round(t.chr - idle) + ' ms');
+  if (t.word > 0 && idle < t.word)      left.push('語間まで ' + Math.round(t.word - idle) + ' ms');
+  if ($('mkAuto').checked && t.end > 0 && idle < t.end) left.push('送信まで ' + ((t.end - idle)/1000).toFixed(1) + ' s');
+  $('mkNext').textContent = left.length ? left.join(' / ') : '待機中';
+}
+function mkTick(){
+  mkPaint();
+  const t = mkT();
+  const idle = mkUp ? performance.now() - mkUp : 1e9;
+  const need = mkDown || idle < Math.max(t.chr, t.word, $('mkAuto').checked ? t.end : 0) + 500;
+  mkRaf = need ? requestAnimationFrame(mkTick) : null;
+}
+
+/* ---------- 配線 ---------- */
+(function wireKey(){
+  const key = $('mkKey');
+  if (!key) return;
+  const down = e => { if (e.cancelable) e.preventDefault(); mkPress(); };
+  const up   = e => { if (e && e.cancelable) e.preventDefault(); mkRelease(); };
+  if (window.PointerEvent){
+    key.addEventListener('pointerdown', e => {
+      try{ key.setPointerCapture(e.pointerId); }catch(err){}
+      down(e);
+    });
+    key.addEventListener('pointerup', up);
+    key.addEventListener('pointercancel', up);
+    key.addEventListener('lostpointercapture', () => mkRelease());
+  } else {
+    key.addEventListener('touchstart', down, { passive:false });
+    key.addEventListener('touchend', up);
+    key.addEventListener('touchcancel', up);
+    key.addEventListener('mousedown', down);
+    window.addEventListener('mouseup', () => mkRelease());
+  }
+  key.addEventListener('contextmenu', e => e.preventDefault());
+  // 画面から離れたら押しっぱなしを解く
+  window.addEventListener('blur', () => mkRelease());
+  document.addEventListener('visibilitychange', () => { if (document.hidden) mkRelease(); });
+
+  // パソコンではスペースキーでも打てる。入力欄にいるときは触らない
+  const spacing = e => (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar');
+  const typing  = e => { const n = e.target; return !!(n && /^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)); };
+  document.addEventListener('keydown', e => {
+    if (!spacing(e) || typing(e)) return;
+    const p2 = $('page2');
+    if (p2 && p2.hidden) return;
+    e.preventDefault();
+    if (!e.repeat) mkPress();
+  });
+  document.addEventListener('keyup', e => {
+    if (!spacing(e) || typing(e)) return;
+    e.preventDefault();
+    mkRelease();
+  });
+
+  $('mkFix').onclick   = () => { mkStop(); mkFixChar(); mkArmTimers(); };
+  $('mkSpace').onclick = () => { mkStop(); mkFixWord(); mkArmTimers(); };
+  $('mkBack').onclick  = () => { mkStop(); mkUp = 0; $('mrUndo').click(); mkPaint(); };
+  $('mkClr').onclick   = () => { mkStop(); mkUp = 0; $('mrClear').click(); mkPaint(); };
+  $('mkTx').onclick    = () => { mkStop(); mkUp = 0; $('mrNow').click(); mkPaint(); };
+
+  ['mkUnit','mkDash','mkChr','mkWord','mkEnd'].forEach(id => {
+    $(id).onchange = () => { mkSave(); mkPaint(); };
+  });
+  ['mkAuto','mkTone','mkHap'].forEach(id => { $(id).onchange = () => { mkSave(); mkPaint(); }; });
+  // 単位長から引き直す。押したときだけ。ふだんは 4 つとも独立
+  const derive3 = u => {
+    $('mkDash').value = Math.round(u*2);
+    $('mkChr').value  = Math.round(u*3);
+    $('mkWord').value = Math.round(u*7);
+    mkSave(); mkPaint();
+    mrLog('単位長 ' + Math.round(u) + ' ms から長点・文字・語間を引き直しました', 'g');
+  };
+  $('mkDerive').onclick = () => derive3(mkNum('mkUnit', MKD.unit));
+  document.querySelectorAll('[data-mkp]').forEach(b => {
+    b.onclick = () => { $('mkUnit').value = b.dataset.mkp; derive3(+b.dataset.mkp); };
+  });
+
+  const s = store.get('mk1', null);
+  if (s){
+    ['unit','dash','chr','word','end'].forEach(k => {
+      const el = $('mk' + k.charAt(0).toUpperCase() + k.slice(1));
+      if (el && s[k] != null && s[k] !== '') el.value = s[k];
+    });
+    if (s.auto != null) $('mkAuto').checked = s.auto;
+    if (s.tone != null) $('mkTone').checked = s.tone;
+    if (s.hap  != null) $('mkHap').checked  = s.hap;
+  }
+  mkPaint();
+})();
+
+/* ============================================================
    受信 — 通知と振動
    ============================================================ */
 let rxList = [], rxAbort = false, rxBusy = false, rxErr = '', ntSeq = 0;
 
 function morseRx(txt){
   if (typeof txt !== 'string' || txt.charAt(0) !== TX_PREFIX) return false;
-  const list = txt.slice(1).split('/').map(c => c.replace(/[^.\-]/g, '')).filter(Boolean);
-  if (!list.length) return false;
+  // 中身のない区切りは語間として残す。前後に付いたものは落とす
+  const raw = txt.slice(1).split('/').map(c => c.replace(/[^.\-]/g, ''));
+  const list = trimList(raw.map(c => c || WSP));
+  if (!list.filter(c => c !== WSP).length) return false;
   const { dec } = tables();
-  const body = list.map(c => dec[c] || '?').join('');
+  const body = bodyOf(list, dec);
   rxList = list;
-  $('rxCode').textContent = list.map(pretty).join(' ');
+  $('rxCode').textContent = showList(list);
   $('rxChar').textContent = body;
-  mrLog('受信 「' + body + '」 ' + list.map(pretty).join(' '), 'g');
+  mrLog('受信 「' + body + '」 ' + showList(list), 'g');
   // 全部読めないときは、まず送信側と符号系が揃っているかを疑う
   if (body.indexOf('?') >= 0){
     const other = isJa() ? '欧文' : '和文';
     mrLog('読めない符号があります。送信側が' + other + 'かもしれません', 's');
   }
   log('モールス受信 → ' + body);
-  if (typeof chatAdd === 'function') chatAdd('rx', body + '   ' + list.map(pretty).join(' '), 'モールス');
+  if (typeof chatAdd === 'function') chatAdd('rx', body + '   ' + showList(list), 'モールス');
   rxPlay(list);
   return true;
 }
@@ -2309,23 +2759,27 @@ function buzz(){
 
 // 先に全部の発火時刻を決めてから、その時刻まで待って出す。
 // 通知を出すのにかかった時間が次の間隔に足し込まれないようにするため
+/* 3 つの間隔もそれぞれ独立。互いに何秒あける、という縛りは掛けていない */
 function buildPlan(list){
-  const rep = clamp(parseFloat($('rxRep').value)||1.5, 0.2, 30) * 1000;
-  const gap = clamp(parseFloat($('rxGap').value)||3.0, 0.3, 60) * 1000;
-  const chg = clamp(parseFloat($('rxChrGap').value)||6.0, 0.5, 120) * 1000;
+  const rep = clamp(parseFloat($('rxRep').value)||1.5, 0.02, 600) * 1000;
+  const gap = clamp(parseFloat($('rxGap').value)||3.0, 0.02, 600) * 1000;
+  const chg = clamp(parseFloat($('rxChrGap').value)||6.0, 0.02, 600) * 1000;
   const { dec } = tables();
   const plan = [];
-  let at = 0;
+  const nCh = list.filter(c => c !== WSP).length;
+  let at = 0, ci = 0;
   for (let c=0; c<list.length; c++){
     const code = list[c];
+    if (code === WSP){ at += chg; continue; }   // 語間はもう 1 文字ぶんあける
+    ci++;
     for (let e=0; e<code.length; e++){
       const n = code[e] === '.' ? 1 : 2;
       for (let i=0;i<n;i++){
         plan.push({
           at: at + i*rep,
           title: n === 1 ? '短音 ・' : '長音 －  ' + (i+1) + '/2',
-          body: (c+1) + '文字目「' + (dec[code] || '?') + '」 ' + (e+1) + '要素目',
-          note: (c+1) + '/' + list.length + ' 文字目「' + (dec[code] || '?') + '」 ' +
+          body: ci + '文字目「' + (dec[code] || '?') + '」 ' + (e+1) + '要素目',
+          note: ci + '/' + nCh + ' 文字目「' + (dec[code] || '?') + '」 ' +
                 (e+1) + '/' + code.length + ' — ' + (n === 1 ? '短音' : '長音 ' + (i+1) + '/2')
         });
       }
@@ -2389,13 +2843,16 @@ $('mrListen').onclick = () => {
   updState();
 };
 $('mrNow').onclick = () => {
+  mkStop(); mkUp = 0;
   closeGroup(); flushChar(); render();
-  if (!codes.length){ mrLog('送る符号がありません', 's'); return; }
-  const list = codes.slice(), body = text;
+  const list = trimList(codes);
+  if (!list.length){ mrLog('送る符号がありません', 's'); return; }
+  const body = text.replace(/^ +| +$/g, '');
   codes = []; text = ''; sym = ''; hist = []; lastTapMs = 0; render();
   doSend(list, body);
 };
 $('mrClear').onclick = () => {
+  mkStop(); mkUp = 0;
   sym = ''; text = ''; codes = []; hist = []; group = 0; lastTapMs = 0;
   render(); updState(); mrLog('消去しました');
 };
@@ -2427,8 +2884,14 @@ $('mrCode').onchange = () => { renderCodeTbl(); render(); store.set('mr3.code', 
 });
 $('mrTh').oninput = e => { $('mrThVal').textContent = e.target.value; store.set('mr3.th', +e.target.value); };
 
-$('rgBeat').onchange = () => setBeat(parseFloat($('rgBeat').value));
-['rgRep','rgChr','rgEnd'].forEach(id => { $(id).onchange = onRangeChange; });
+// 4 つは独立。どれを直しても他を書き換えない
+['rgBeat','rgRep','rgChr','rgEnd'].forEach(id => { $(id).onchange = onRangeChange; });
+// 1 拍から 3 つを引き直すのは、このボタンを押したときだけ
+$('rgDerive').onclick = () => {
+  const b = clamp(secOf('rgBeat', BEAT_DEF), 0.01, 600);
+  setBeat(b);
+  mrLog('1 拍 ' + fmt(b) + ' s から下の 3 つを引き直しました', 'g');
+};
 document.querySelectorAll('[data-cal]').forEach(b => {
   b.onclick = () => { if (mode === 'calib') stopCal(); else startCal(); };
 });
@@ -2453,7 +2916,7 @@ $('rxPerm').onclick = async () => {
   updDiag();
 };
 $('rxTry').onclick = async () => {
-  const rep = clamp(parseFloat($('rxRep').value)||1.5, 0.2, 30) * 1000;
+  const rep = clamp(parseFloat($('rxRep').value)||1.5, 0.02, 600) * 1000;
   rxBusy = true;
   $('rxProg').textContent = '2 連続を試しています …';
   buzz(); const a = await notify('長音 －  1/2', 'テスト 1 回目');
