@@ -286,6 +286,66 @@
     <p class="lbl" id="chatTapStat" style="margin:9px 0 0">タップ入力 停止中</p>
   </section>
 
+<section>
+  <p class="lbl">タップ入力のタイミング設定</p>
+
+  <div class="field">
+    <p class="lbl" style="margin-bottom:5px">1 拍 — 要素と要素の間隔 &nbsp;<span class="val" id="calBeatN"></span></p>
+    <div class="fsrow">
+      <input type="number" id="rgBeat" inputmode="decimal" step="0.05" value="0.70">
+      <span class="unit">s</span>
+      <button class="mini" id="rgDerive" data-hold="600">引き直す</button>
+      <button class="mini" data-cal="beat" data-hold="1000">実測</button>
+    </div>
+  </div>
+  <div class="field">
+    <p class="lbl" style="margin-bottom:5px">連続とみなす上限 — これより内側の2打目は長点</p>
+    <div class="fsrow">
+      <input type="number" id="rgRep" inputmode="decimal" step="0.02" value="0.32">
+      <span class="unit">s 以内</span>
+    </div>
+  </div>
+  <div class="field">
+    <p class="lbl" style="margin-bottom:5px">文字区切りの下限 — これ以上あけたら次の文字</p>
+    <div class="fsrow">
+      <input type="number" id="rgChr" inputmode="decimal" step="0.05" value="1.26">
+      <span class="unit">s 以上</span>
+    </div>
+  </div>
+  <div class="field">
+    <p class="lbl" style="margin-bottom:5px">通信終了 — これ以上の無音で送信</p>
+    <div class="fsrow">
+      <input type="number" id="rgEnd" inputmode="decimal" step="0.5" value="3.50">
+      <span class="unit">s 以上</span>
+    </div>
+  </div>
+
+  <div class="presets">
+    <button data-preset="std">既定に戻す</button>
+    <button data-preset="fast">速め ×0.7</button>
+    <button data-preset="slow">ゆっくり ×1.6</button>
+  </div>
+
+  <div id="calBox" class="warnbox" style="display:none">
+    <div id="calMsg">—</div>
+    <div class="row" style="margin-top:9px">
+      <button id="calApply" class="primary">この実測値を反映</button>
+      <button id="calCancel">中止</button>
+    </div>
+  </div>
+
+  <details>
+    <summary>タイミングの決まりかた</summary>
+  <p class="note" style="margin-top:8px">
+    4 つの値は<strong>それぞれ独立</strong>です。互いに何秒以上あける、何倍以上にするといった縛りは
+    掛けていないので、順番が入れ替わるような値でもそのまま入ります。入れた数字は書き換えません。
+    <br><strong>引き直す</strong>を押したときだけ、1 拍から下の 3 つを比率どおりに引き直します。
+    <strong>実測</strong>は、要素を並べるつもりの間隔で 6 回以上叩くと実際の 1 拍を測って 4 つに反映します。
+    <br>上の帯は今の値で実際にどう判定されるかを描いたものです。値を極端にすると帯の並びもそのとおりに変わります。
+  </p>
+  </details>
+</section>
+
 </div>
 
 <!-- ============ 2 ページ目 — 元の画面 ============ -->
@@ -583,60 +643,14 @@
 </section>
 
 <section>
-  <p class="lbl">タイミング設定 — 入力側</p>
-
-  <div class="field">
-    <p class="lbl" style="margin-bottom:5px">1 拍 — 要素と要素の間隔 &nbsp;<span class="val" id="calBeatN"></span></p>
-    <div class="fsrow">
-      <input type="number" id="rgBeat" inputmode="decimal" step="0.05" value="0.70">
-      <span class="unit">s</span>
-      <button class="mini" id="rgDerive" data-hold="600">引き直す</button>
-      <button class="mini" data-cal="beat" data-hold="1000">実測</button>
-    </div>
-  </div>
-  <div class="field">
-    <p class="lbl" style="margin-bottom:5px">連続とみなす上限 — これより内側の2打目は長点</p>
-    <div class="fsrow">
-      <input type="number" id="rgRep" inputmode="decimal" step="0.02" value="0.32">
-      <span class="unit">s 以内</span>
-    </div>
-  </div>
-  <div class="field">
-    <p class="lbl" style="margin-bottom:5px">文字区切りの下限 — これ以上あけたら次の文字</p>
-    <div class="fsrow">
-      <input type="number" id="rgChr" inputmode="decimal" step="0.05" value="1.26">
-      <span class="unit">s 以上</span>
-    </div>
-  </div>
-  <div class="field">
-    <p class="lbl" style="margin-bottom:5px">通信終了 — これ以上の無音で送信</p>
-    <div class="fsrow">
-      <input type="number" id="rgEnd" inputmode="decimal" step="0.5" value="3.50">
-      <span class="unit">s 以上</span>
-    </div>
-  </div>
-
-  <div class="presets">
-    <button data-preset="std">既定に戻す</button>
-    <button data-preset="fast">速め ×0.7</button>
-    <button data-preset="slow">ゆっくり ×1.6</button>
-  </div>
-
-  <div id="calBox" class="warnbox" style="display:none">
-    <div id="calMsg">—</div>
-    <div class="row" style="margin-top:9px">
-      <button id="calApply" class="primary">この実測値を反映</button>
-      <button id="calCancel">中止</button>
-    </div>
-  </div>
-
-  <p class="note">
-    4 つの値は<strong>それぞれ独立</strong>です。互いに何秒以上あける、何倍以上にするといった縛りは
-    掛けていないので、順番が入れ替わるような値でもそのまま入ります。入れた数字は書き換えません。
-    <br><strong>引き直す</strong>を押したときだけ、1 拍から下の 3 つを比率どおりに引き直します。
-    <strong>実測</strong>は、要素を並べるつもりの間隔で 6 回以上叩くと実際の 1 拍を測って 4 つに反映します。
-    <br>上の帯は今の値で実際にどう判定されるかを描いたものです。値を極端にすると帯の並びもそのとおりに変わります。
+  <p class="lbl">タップ入力のタイミング設定</p>
+  <p class="note" style="margin:0">
+    1 拍・連続とみなす上限・文字区切り・通信終了の 4 つは、
+    <strong>「通信」タブのタップ入力欄のすぐ下</strong>に移しました。
   </p>
+  <div class="row" style="margin-top:10px">
+    <button id="goTiming">タイミング設定へ移動</button>
+  </div>
 </section>
 
 <section>
@@ -729,6 +743,19 @@
     <code>echoCancellation</code> / <code>noiseSuppression</code> / <code>autoGainControl</code>
     が <span class="bad">true</span> のままだと超音波は前処理で潰されます。
   </p>
+</section>
+
+<section>
+  <p class="lbl">この端末に保存した設定</p>
+  <p class="note" style="margin:0">
+    使用帯・プロトコル・音量・タイミング・電鍵など、変えた設定はこの端末の中だけに残ります。
+    サーバーには送られないので、<strong>端末ごとに別々</strong>です。
+    2 台の設定を揃えたいときは、それぞれの端末で同じ値を入れてください。
+  </p>
+  <div class="row" style="margin-top:11px">
+    <button id="cfgWipe" data-hold="600">保存した設定を消して初期化</button>
+  </div>
+  <p class="lbl" id="cfgStat" style="margin:9px 0 0">—</p>
 </section>
 </div><!-- /page2 -->
 
@@ -1949,6 +1976,17 @@ $('chatClear').onclick = () => $('mrClear').click();
   if (r) $('rate').value = String(r);
   const v = store.get('tx.vol', null);
   if (v != null){ $('vol').value = v; $('volVal').textContent = v; }
+
+  /* 取りこぼしていた 4 つ。値は端末ごとに localStorage へ入る */
+  ['halfDuplex','loop','txRepeat'].forEach(id => {
+    const b = store.get('tx.'+id, null);
+    if (b !== null) $(id).checked = b;
+    $(id).addEventListener('change', () => store.set('tx.'+id, $(id).checked));
+  });
+  const tn = store.get('tx.tone', null);
+  if (tn != null){ $('tone').value = tn; $('toneVal').textContent = tn; }
+  $('tone').addEventListener('change', () => store.set('tx.tone', +$('tone').value));
+
   countBytes();
 })();
 showPage(store.get('ui.page', 1));
@@ -3018,6 +3056,36 @@ function renderCodeTbl(){
   const r = store.get('mr3.ranges', null);
   if (r && r.beat) { try{ writeRanges(r); }catch(e){} }
 })();
+
+/* 2ページ目からタイミング設定へ飛ぶ */
+$('goTiming').onclick = () => {
+  showPage(1);
+  const el = document.getElementById('rgBeat');
+  if (el) setTimeout(() => el.scrollIntoView({ behavior:'smooth', block:'center' }), 60);
+};
+
+/* 保存した設定を消す。誤爆しないよう 2 度押しで確定する */
+let cfgArm = 0;
+$('cfgWipe').onclick = () => {
+  if (Date.now() - cfgArm > 5000){
+    cfgArm = Date.now();
+    $('cfgStat').textContent = '本当に消すなら、5 秒以内にもう一度押してください';
+    return;
+  }
+  cfgArm = 0;
+  let n = 0;
+  try {
+    const ks = [];
+    for (let i=0;i<localStorage.length;i++) ks.push(localStorage.key(i));
+    ks.forEach(k => {
+      if (k === 'mk1' || k.indexOf('tx.') === 0 ||
+          k.indexOf('mr3.') === 0 || k.indexOf('ui.') === 0){
+        localStorage.removeItem(k); n++;
+      }
+    });
+  } catch(e){}
+  $('cfgStat').textContent = n + ' 件を消しました。読み込み直すと既定値に戻ります';
+};
 
 renderCodeTbl(); render(); onRangeChange(); updState(); updDiag();
 })();
